@@ -13,3 +13,4 @@ htmlcov/
 generated_reports/
 app.db
 .codex_runtime/
+*.egg-info/
