@@ -100,6 +100,7 @@ def generate_baseline_report_bundle(
         report_title=report_title,
         generated_at=generated_at,
         environment_category=calculation_response.environment_category,
+        forecast_mode=calculation_response.forecast_mode,
         scenario_count=len(calculation_response.results),
         recommended_action=calculation_response.risk_profile.recommended_action,
         artifacts=artifacts,
@@ -141,7 +142,11 @@ def write_docx_report(context: ReportContext, file_path: Path) -> None:
     add_docx_table(document, ["Parameter", "Value"], build_model_rows(context))
 
     document.add_heading("Current zone state", level=1)
-    add_docx_table(document, ["Zone", "Role", "Corrosion loss, mm", "Effective thickness, mm"], build_zone_rows(context))
+    add_docx_table(
+        document,
+        ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+        build_zone_rows(context),
+    )
 
     document.add_heading("Scenario comparison", level=1)
     add_docx_table(
@@ -184,7 +189,14 @@ def write_pdf_report(context: ReportContext, file_path: Path) -> None:
     story.extend(build_pdf_section("Inspection summary", ["Inspection field", "Value"], build_inspection_rows(context), styles))
     story.extend(build_pdf_section("Measurements", ["Zone", "Point", "Thickness, mm", "Error, mm", "Quality"], build_measurement_rows(context), styles))
     story.extend(build_pdf_section("Model and coefficients", ["Parameter", "Value"], build_model_rows(context), styles))
-    story.extend(build_pdf_section("Current zone state", ["Zone", "Role", "Corrosion loss, mm", "Effective thickness, mm"], build_zone_rows(context), styles))
+    story.extend(
+        build_pdf_section(
+            "Current zone state",
+            ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+            build_zone_rows(context),
+            styles,
+        )
+    )
     story.extend(
         build_pdf_section(
             "Scenario comparison",
@@ -229,9 +241,9 @@ def build_scope_line(context: ReportContext) -> str:
 
 def build_model_line(context: ReportContext) -> str:
     return (
-        "Report generated from the deterministic baseline corrosion workflow "
-        "with long-term continuation, effective section recalculation, "
-        "resistance check, and scenario-based remaining-life assessment."
+        "Report generated from the engineering chain "
+        "delta_obs -> v_z -> forecast loss -> t_eff -> effective section -> resistance -> remaining life, "
+        "with the classical atmospheric law preserved as baseline and fallback."
     )
 
 
@@ -257,6 +269,7 @@ def build_input_rows(context: ReportContext) -> List[List[str]]:
     request = context.calculation_request
     return [
         ["Environment category", request.environment_category.value],
+        ["Forecast mode", context.calculation_response.forecast_mode.value],
         ["Current service life, years", format_number(request.current_service_life_years, 2)],
         ["Forecast horizon, years", format_number(request.forecast_horizon_years, 2)],
         ["Time step, years", format_number(request.time_step_years, 2)],
@@ -296,7 +309,7 @@ def build_measurement_rows(context: ReportContext) -> List[List[str]]:
                 [
                     measurement.zone_code,
                     measurement.point_id or "-",
-                    format_number(measurement.thickness_mm, 3),
+                    f"{format_number(measurement.thickness_mm, 3)} {measurement.units}",
                     format_number(measurement.error_mm, 3),
                     format_number(measurement.quality, 2),
                 ]
@@ -314,6 +327,11 @@ def build_model_rows(context: ReportContext) -> List[List[str]]:
         ["Environment coefficient k, mm", format_number(coefficients["k_mm"], 4)],
         ["Time exponent b", format_number(coefficients["b"], 4)],
         ["Conservative exponent b", format_number(coefficients["b_conservative"], 4)],
+        ["Forecast mode", context.calculation_response.forecast_mode.value],
+        ["ML model version", context.calculation_response.ml_model_version.version],
+        ["ML model note", context.calculation_response.ml_model_version.notes or "-"],
+        ["Dataset version", context.calculation_response.dataset_version.code],
+        ["Dataset source", context.calculation_response.dataset_version.source],
         ["Scenario count", str(len(context.calculation_response.results))],
         ["Risk exceedance share", format_number(context.calculation_response.risk_profile.exceedance_share, 3)],
     ]
@@ -325,7 +343,10 @@ def build_zone_rows(context: ReportContext) -> List[List[str]]:
         [
             state.zone_id,
             state.role,
+            format_optional_number(state.observed_loss_mm, 3),
             format_number(state.corrosion_loss_mm, 3),
+            format_optional_number(state.forecast_rate_mm_per_year, 4),
+            state.forecast_source,
             format_number(state.effective_thickness_mm, 3),
         ]
         for state in baseline.zone_states

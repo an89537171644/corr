@@ -352,6 +352,11 @@ def build_section_definition(row: Dict[str, object]) -> SectionDefinition:
         area0_mm2=optional_float(row, "area0_mm2"),
         inertia0_mm4=optional_float(row, "inertia0_mm4"),
         section_modulus0_mm3=optional_float(row, "section_modulus0_mm3"),
+        leg_horizontal_mm=optional_float(row, "leg_horizontal_mm"),
+        leg_vertical_mm=optional_float(row, "leg_vertical_mm"),
+        leg_thickness_mm=optional_float(row, "leg_thickness_mm"),
+        outer_diameter_mm=optional_float(row, "outer_diameter_mm"),
+        wall_thickness_mm=optional_float(row, "wall_thickness_mm"),
     )
 
 
@@ -404,6 +409,8 @@ def build_measurement_dict(row: Dict[str, object]) -> Dict[str, object]:
         "error_mm": optional_float(row, "error_mm") or 0.0,
         "measured_at": optional_date(row, "measured_at"),
         "quality": optional_float(row, "quality") or 1.0,
+        "units": optional_text(row, "units") or "mm",
+        "comment": optional_text(row, "comment"),
     }
 
 

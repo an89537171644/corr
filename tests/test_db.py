@@ -27,5 +27,7 @@ def test_initialize_database_schema_create_all_creates_tables(tmp_path: Path) ->
 
     assert mode == "create_all"
     assert {"assets", "elements", "zones", "inspections", "measurements"} <= table_names
+    measurement_columns = {column["name"] for column in inspector.get_columns("measurements")}
+    assert {"units", "comment"} <= measurement_columns
 
     engine.dispose()

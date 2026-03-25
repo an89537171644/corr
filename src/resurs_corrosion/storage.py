@@ -284,6 +284,7 @@ def build_calculation_request(
         time_step_years=overrides.time_step_years,
         inspections=inspections,
         scenarios=overrides.scenarios,
+        forecast_mode=overrides.forecast_mode,
     )
 
 
@@ -317,6 +318,8 @@ def measurement_to_model(measurement: ThicknessMeasurement) -> MeasurementModel:
         error_mm=measurement.error_mm,
         measured_at=measurement.measured_at,
         quality=measurement.quality,
+        units=measurement.units,
+        comment=measurement.comment,
     )
 
 
@@ -328,6 +331,8 @@ def measurement_to_schema(measurement: MeasurementModel) -> ThicknessMeasurement
         error_mm=measurement.error_mm,
         measured_at=measurement.measured_at,
         quality=measurement.quality,
+        units=measurement.units,
+        comment=measurement.comment,
     )
 
 

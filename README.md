@@ -9,7 +9,9 @@ remaining service life.
 - FastAPI backend skeleton with versioned API routes.
 - SQLAlchemy persistence layer with local SQLite by default and PostgreSQL support via `DATABASE_URL`.
 - CRUD flows for assets, elements, zones, and inspection journals.
-- Automatic engineering report generation in `DOCX` and `PDF` for stored baseline calculations.
+- Inspection-driven `delta_obs` and `v_z` evaluation per zone from stored surveys.
+- Hybrid degradation forecast that starts from the last observed state and applies an explicit rate-correction module.
+- Automatic engineering report generation in `DOCX` and `PDF` for stored analyses.
 - Import from `CSV/XLSX` for assets, elements with zones, and inspections with measurements.
 - Built-in browser UI served directly by FastAPI at `/`.
 - Alembic migrations and controlled schema initialization modes for SQLite and PostgreSQL.
@@ -21,12 +23,17 @@ remaining service life.
 - Effective section recalculation for:
   - `plate`
   - `i_section`
+  - `channel`
+  - `angle`
+  - `tube`
   - `generic_reduced` fallback for other profiles
 - Residual resistance checks for:
   - axial tension
   - axial compression with a stability factor
   - major-axis bending
 - Scenario library for `C2` to `C5` environments and first-line what-if cases.
+- Demo dataset and one-command demo runner under `data_examples/` and `scripts/`.
+- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, and `docs/limitations.md`.
 - Pytest coverage for the baseline formulas and API integration.
 
 ## Important assumptions in this first slice
@@ -35,6 +42,8 @@ remaining service life.
   corrosion-rate multiplier described in the specification.
 - The current risk profile is scenario-based, not probabilistic. It reports the
   share of tested scenarios that reach a limit state within the forecast horizon.
+- The hybrid forecast uses an explicit heuristic ensemble interface in v1. It is
+  reproducible and auditable, but not yet trained on a large real dataset.
 - For unsupported profiles, `generic_reduced` applies a conservative thickness
   reduction factor to user-supplied initial section properties.
 - The MVP stores section, material, and action definitions as structured JSON
@@ -53,6 +62,12 @@ uvicorn resurs_corrosion.main:app --reload
 Open `http://127.0.0.1:8000/docs`.
 
 Open `http://127.0.0.1:8000/` for the built-in engineering workspace.
+
+Run the bundled demo case:
+
+```powershell
+python scripts/run_demo_case.py
+```
 
 By default the app uses `sqlite:///./app.db`. To point the API to PostgreSQL:
 
@@ -118,10 +133,18 @@ The root route `/` now serves a lightweight web application with:
 - asset registry and search
 - element registry for the selected asset
 - inspection journal for the selected element
-- manual creation forms for assets, elements, zones, and measurements
-- baseline calculation with scenario table and timeline chart
+- manual creation and update forms for assets, elements, zones, and measurements
+- engineering analysis with scenario table and timeline chart
 - report export links for `DOCX/PDF`
 - bulk upload entry points for `CSV/XLSX`
+
+## Documentation
+
+- [docs/architecture.md](docs/architecture.md)
+- [docs/domain-model.md](docs/domain-model.md)
+- [docs/calculation-model.md](docs/calculation-model.md)
+- [docs/ml-pipeline.md](docs/ml-pipeline.md)
+- [docs/limitations.md](docs/limitations.md)
 
 ## Deployment note
 

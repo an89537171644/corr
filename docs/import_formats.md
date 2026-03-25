@@ -56,6 +56,11 @@ Optional element columns:
   - `flange_width_mm`
   - `web_thickness_mm`
   - `flange_thickness_mm`
+  - `leg_horizontal_mm`
+  - `leg_vertical_mm`
+  - `leg_thickness_mm`
+  - `outer_diameter_mm`
+  - `wall_thickness_mm`
   - `area0_mm2`
   - `inertia0_mm4`
   - `section_modulus0_mm3`
@@ -117,6 +122,8 @@ Measurement columns:
 - `error_mm`
 - `measured_at`
 - `quality`
+- `units`
+- `comment`
 
 If multiple rows belong to the same inspection, set the same `inspection_code`.
 
@@ -144,11 +151,13 @@ Workbook with:
 - `error_mm`
 - `measured_at`
 - `quality`
+- `units`
+- `comment`
 
 ## Accepted value conventions
 
 - Dates: `YYYY-MM-DD`, `DD.MM.YYYY`, `DD/MM/YYYY`, or `YYYY/MM/DD`
 - Numbers: dot or comma decimal separator
 - Environment category: `C2`, `C3`, `C4`, `C5`
-- Section type: `plate`, `i_section`, `generic_reduced`
+- Section type: `plate`, `i_section`, `channel`, `angle`, `tube`, `generic_reduced`
 - Check type: `axial_tension`, `axial_compression`, `bending_major`

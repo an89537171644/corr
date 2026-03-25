@@ -36,7 +36,7 @@ def create_app(database_url: Optional[str] = None) -> FastAPI:
 
     app = FastAPI(
         title="Residual Life Corrosion MVP",
-        version="0.6.0",
+        version="0.7.0",
         description="Baseline API for atmospheric corrosion assessment and residual life forecasting.",
         lifespan=lifespan,
     )

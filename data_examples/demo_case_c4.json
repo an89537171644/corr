@@ -1,0 +1,139 @@
+{
+  "asset": {
+    "name": "Demo corrosion case",
+    "address": "Moscow region",
+    "commissioned_year": 2006,
+    "purpose": "Industrial frame",
+    "responsibility_class": "KS-2"
+  },
+  "element": {
+    "element_id": "BEAM-C4-01",
+    "element_type": "beam",
+    "steel_grade": "C255",
+    "work_scheme": "bending",
+    "operating_zone": "roof edge"
+  },
+  "environment_category": "C4",
+  "section": {
+    "section_type": "i_section",
+    "height_mm": 300.0,
+    "flange_width_mm": 150.0,
+    "web_thickness_mm": 8.0,
+    "flange_thickness_mm": 12.0
+  },
+  "zones": [
+    {
+      "zone_id": "top",
+      "role": "top_flange",
+      "initial_thickness_mm": 12.0,
+      "exposed_surfaces": 1,
+      "pitting_factor": 0.05,
+      "pit_loss_mm": 0.2
+    },
+    {
+      "zone_id": "bottom",
+      "role": "bottom_flange",
+      "initial_thickness_mm": 12.0,
+      "exposed_surfaces": 1,
+      "pitting_factor": 0.08,
+      "pit_loss_mm": 0.3
+    },
+    {
+      "zone_id": "web",
+      "role": "web",
+      "initial_thickness_mm": 8.0,
+      "exposed_surfaces": 2,
+      "pitting_factor": 0.12,
+      "pit_loss_mm": 0.4
+    }
+  ],
+  "material": {
+    "fy_mpa": 245.0,
+    "gamma_m": 1.05,
+    "stability_factor": 0.9
+  },
+  "action": {
+    "check_type": "bending_major",
+    "demand_value": 110.0,
+    "demand_growth_factor_per_year": 0.005
+  },
+  "current_service_life_years": 20.0,
+  "forecast_horizon_years": 12.0,
+  "time_step_years": 1.0,
+  "forecast_mode": "hybrid",
+  "inspections": [
+    {
+      "inspection_id": "INSP-2024",
+      "performed_at": "2024-03-25",
+      "method": "ultrasonic",
+      "executor": "Lab A",
+      "findings": "Moderate corrosion at the web and bottom flange.",
+      "measurements": [
+        {
+          "zone_id": "top",
+          "point_id": "T-1",
+          "thickness_mm": 11.6,
+          "error_mm": 0.1,
+          "measured_at": "2024-03-25",
+          "quality": 0.94,
+          "units": "mm",
+          "comment": "Coating locally degraded."
+        },
+        {
+          "zone_id": "bottom",
+          "point_id": "B-1",
+          "thickness_mm": 11.3,
+          "error_mm": 0.1,
+          "measured_at": "2024-03-25",
+          "quality": 0.95,
+          "units": "mm"
+        },
+        {
+          "zone_id": "web",
+          "point_id": "W-1",
+          "thickness_mm": 7.5,
+          "error_mm": 0.1,
+          "measured_at": "2024-03-25",
+          "quality": 0.92,
+          "units": "mm"
+        }
+      ]
+    },
+    {
+      "inspection_id": "INSP-2026",
+      "performed_at": "2026-03-25",
+      "method": "ultrasonic",
+      "executor": "Lab B",
+      "findings": "Progressive corrosion in the web zone.",
+      "measurements": [
+        {
+          "zone_id": "top",
+          "point_id": "T-2",
+          "thickness_mm": 11.3,
+          "error_mm": 0.1,
+          "measured_at": "2026-03-25",
+          "quality": 0.95,
+          "units": "mm"
+        },
+        {
+          "zone_id": "bottom",
+          "point_id": "B-2",
+          "thickness_mm": 10.9,
+          "error_mm": 0.1,
+          "measured_at": "2026-03-25",
+          "quality": 0.95,
+          "units": "mm"
+        },
+        {
+          "zone_id": "web",
+          "point_id": "W-2",
+          "thickness_mm": 7.0,
+          "error_mm": 0.1,
+          "measured_at": "2026-03-25",
+          "quality": 0.93,
+          "units": "mm"
+        }
+      ]
+    }
+  ]
+}

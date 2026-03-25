@@ -48,6 +48,7 @@ def test_calculate_baseline_endpoint(client) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["environment_category"] == "C3"
+    assert body["forecast_mode"] == "hybrid"
     assert len(body["results"]) == 5
     assert "risk_profile" in body
 
@@ -140,7 +141,9 @@ def test_persisted_asset_element_inspection_workflow(client) -> None:
     assert calc_response.status_code == 200
     body = calc_response.json()
     assert body["environment_category"] == "C4"
+    assert body["forecast_mode"] == "hybrid"
     assert len(body["results"]) == 5
+    assert len(body["zone_observations"]) == 1
     assert body["results"][0]["section"]["area_mm2"] > 0
 
 

@@ -392,7 +392,7 @@ async function handleCalculationSubmit(event) {
     });
     renderCalculationResult(state.calculation);
     renderReportPreview();
-    showNotice("Baseline calculation completed.", "info");
+    showNotice("Engineering analysis completed.", "info");
   } catch (error) {
     showNotice(error.message, "error");
   }
@@ -655,8 +655,8 @@ function renderReportPreview() {
   const previewNote = state.reportPreview
     ? "Preview synchronized with the report form horizon."
     : state.calculation
-      ? "Preview uses the latest baseline calculation already in memory."
-      : "Run Preview Report or Baseline to embed scenario tables and recommendation text.";
+      ? "Preview uses the latest analysis snapshot already in memory."
+      : "Run Preview Report or the engineering analysis to embed scenario tables and recommendation text.";
 
   if (!element) {
     refs.reportPreview.classList.add("empty-block");

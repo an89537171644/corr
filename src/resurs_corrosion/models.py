@@ -108,6 +108,7 @@ class MeasurementModel(Base):
     error_mm: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     measured_at: Mapped[Optional[date]] = mapped_column(Date)
     quality: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    units: Mapped[str] = mapped_column(String(32), nullable=False, default="mm")
+    comment: Mapped[Optional[str]] = mapped_column(Text)
 
     inspection: Mapped["InspectionModel"] = relationship(back_populates="measurements")
-

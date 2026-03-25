@@ -18,6 +18,9 @@ class SectionType(str, Enum):
     GENERIC_REDUCED = "generic_reduced"
     PLATE = "plate"
     I_SECTION = "i_section"
+    CHANNEL = "channel"
+    ANGLE = "angle"
+    TUBE = "tube"
 
 
 class CheckType(str, Enum):
@@ -49,6 +52,8 @@ class ThicknessMeasurement(BaseModel):
     error_mm: float = Field(default=0.0, ge=0)
     measured_at: Optional[date] = None
     quality: float = Field(default=1.0, ge=0.0, le=1.0)
+    units: str = Field(default="mm", min_length=1)
+    comment: Optional[str] = None
 
 
 class InspectionRecord(BaseModel):
@@ -85,17 +90,32 @@ class SectionDefinition(BaseModel):
     inertia0_mm4: Optional[float] = Field(default=None, gt=0)
     section_modulus0_mm3: Optional[float] = Field(default=None, gt=0)
 
+    leg_horizontal_mm: Optional[float] = Field(default=None, gt=0)
+    leg_vertical_mm: Optional[float] = Field(default=None, gt=0)
+    leg_thickness_mm: Optional[float] = Field(default=None, gt=0)
+
+    outer_diameter_mm: Optional[float] = Field(default=None, gt=0)
+    wall_thickness_mm: Optional[float] = Field(default=None, gt=0)
+
     @model_validator(mode="after")
     def validate_shape(self) -> "SectionDefinition":
         if self.section_type == SectionType.PLATE:
             required = [self.width_mm, self.thickness_mm]
-        elif self.section_type == SectionType.I_SECTION:
+        elif self.section_type in (SectionType.I_SECTION, SectionType.CHANNEL):
             required = [
                 self.height_mm,
                 self.flange_width_mm,
                 self.web_thickness_mm,
                 self.flange_thickness_mm,
             ]
+        elif self.section_type == SectionType.ANGLE:
+            required = [
+                self.leg_horizontal_mm,
+                self.leg_vertical_mm,
+                self.leg_thickness_mm,
+            ]
+        elif self.section_type == SectionType.TUBE:
+            required = [self.outer_diameter_mm, self.wall_thickness_mm]
         else:
             required = [
                 self.reference_thickness_mm,
@@ -106,6 +126,9 @@ class SectionDefinition(BaseModel):
 
         if any(value is None for value in required):
             raise ValueError(f"Missing geometric data for section type '{self.section_type.value}'.")
+
+        if self.section_type == SectionType.TUBE and float(self.wall_thickness_mm) * 2.0 >= float(self.outer_diameter_mm):
+            raise ValueError("Tube wall thickness must be lower than half of the outer diameter.")
 
         return self
 
@@ -133,6 +156,12 @@ class CalculationScenarioInput(BaseModel):
     notes: Optional[str] = None
 
 
+class ForecastMode(str, Enum):
+    BASELINE = "baseline"
+    OBSERVED = "observed"
+    HYBRID = "hybrid"
+
+
 class CalculationRequest(BaseModel):
     asset: AssetPassport
     element: ElementPassport
@@ -146,6 +175,20 @@ class CalculationRequest(BaseModel):
     time_step_years: float = Field(default=1.0, gt=0)
     inspections: List[InspectionRecord] = Field(default_factory=list)
     scenarios: List[CalculationScenarioInput] = Field(default_factory=list)
+    forecast_mode: ForecastMode = ForecastMode.HYBRID
+
+
+class ZoneObservation(BaseModel):
+    zone_id: str
+    role: str
+    latest_thickness_mm: Optional[float] = None
+    observed_loss_mm: Optional[float] = None
+    observed_rate_mm_per_year: Optional[float] = None
+    effective_rate_mm_per_year: Optional[float] = None
+    baseline_rate_mm_per_year: Optional[float] = None
+    latest_inspection_date: Optional[date] = None
+    measurement_count: int = 0
+    source: str
 
 
 class ZoneState(BaseModel):
@@ -153,6 +196,9 @@ class ZoneState(BaseModel):
     role: str
     corrosion_loss_mm: float
     effective_thickness_mm: float
+    observed_loss_mm: Optional[float] = None
+    forecast_rate_mm_per_year: Optional[float] = None
+    forecast_source: str = "baseline"
 
 
 class SectionProperties(BaseModel):
@@ -193,9 +239,27 @@ class RiskProfile(BaseModel):
     method_note: str
 
 
+class MLModelVersionInfo(BaseModel):
+    name: str
+    version: str
+    fitted: bool
+    notes: Optional[str] = None
+
+
+class DatasetVersionInfo(BaseModel):
+    code: str
+    source: str
+    rows: int
+    notes: Optional[str] = None
+
+
 class CalculationResponse(BaseModel):
     environment_category: EnvironmentCategory
     environment_coefficients: dict
+    forecast_mode: ForecastMode
+    zone_observations: List[ZoneObservation]
+    ml_model_version: MLModelVersionInfo
+    dataset_version: DatasetVersionInfo
     results: List[ScenarioResult]
     risk_profile: RiskProfile
 
@@ -240,6 +304,7 @@ class BaselineStoredElementRequest(BaseModel):
     time_step_years: float = Field(default=1.0, gt=0)
     current_service_life_years: Optional[float] = Field(default=None, ge=0.0)
     scenarios: List[CalculationScenarioInput] = Field(default_factory=list)
+    forecast_mode: ForecastMode = ForecastMode.HYBRID
 
 
 class ReportFormat(str, Enum):
@@ -269,6 +334,7 @@ class ReportBundle(BaseModel):
     report_title: str
     generated_at: datetime
     environment_category: EnvironmentCategory
+    forecast_mode: ForecastMode
     scenario_count: int
     recommended_action: str
     artifacts: List[ReportArtifact]

@@ -6,26 +6,45 @@ from ..domain import (
     CalculationRequest,
     CalculationResponse,
     CalculationScenarioInput,
+    DatasetVersionInfo,
+    MLModelVersionInfo,
     RiskProfile,
     ScenarioResult,
     TimelinePoint,
 )
+from ..ml import build_default_hybrid_model
 from ..scenarios import default_scenario_library, get_environment_profile
 from .capacity import calculate_demand, calculate_resistance, find_limit_state_crossing
-from .corrosion import build_zone_states, sample_ages
+from .corrosion import sample_ages
+from .degradation import build_forecast_zone_states, build_zone_observations
 from .sections import build_effective_section
 
 
 def run_calculation(request: CalculationRequest) -> CalculationResponse:
     environment = get_environment_profile(request.environment_category)
     scenarios = request.scenarios or default_scenario_library(request.environment_category)
+    hybrid_model = build_default_hybrid_model()
+    zone_observations = build_zone_observations(
+        zones=request.zones,
+        inspections=request.inspections,
+        current_service_life_years=request.current_service_life_years,
+        environment_category=request.environment_category.value,
+        k_mm=environment["k_mm"],
+        b=environment["b"],
+        forecast_mode=request.forecast_mode,
+        model=hybrid_model,
+    )
 
-    results = [run_scenario(request, environment, scenario) for scenario in scenarios]
+    results = [run_scenario(request, environment, scenario, zone_observations) for scenario in scenarios]
     risk_profile = summarize_risk(results)
 
     return CalculationResponse(
         environment_category=request.environment_category,
         environment_coefficients=environment,
+        forecast_mode=request.forecast_mode,
+        zone_observations=zone_observations,
+        ml_model_version=MLModelVersionInfo.model_validate(hybrid_model.model_info()),
+        dataset_version=build_dataset_version(request),
         results=results,
         risk_profile=risk_profile,
     )
@@ -35,9 +54,10 @@ def run_scenario(
     request: CalculationRequest,
     environment: dict,
     scenario: CalculationScenarioInput,
+    zone_observations: list,
 ) -> ScenarioResult:
-    k_mm = environment["k_mm"] * scenario.corrosion_k_factor
-    b_value = scenario.b_override or environment["b"]
+    k_mm = environment["k_mm"]
+    b_value = environment["b"]
     timeline: List[TimelinePoint] = []
 
     for age_years in sample_ages(
@@ -45,13 +65,15 @@ def run_scenario(
         horizon_years=request.forecast_horizon_years,
         step_years=request.time_step_years,
     ):
-        zone_states = build_zone_states(
+        zone_states = build_forecast_zone_states(
             zones=request.zones,
+            observations=zone_observations,
             age_years=age_years,
             current_age_years=request.current_service_life_years,
             k_mm=k_mm,
             b=b_value,
             scenario=scenario,
+            forecast_mode=request.forecast_mode,
         )
         section = build_effective_section(
             section=request.section,
@@ -73,13 +95,15 @@ def run_scenario(
             )
         )
 
-    current_zone_states = build_zone_states(
+    current_zone_states = build_forecast_zone_states(
         zones=request.zones,
+        observations=zone_observations,
         age_years=request.current_service_life_years,
         current_age_years=request.current_service_life_years,
         k_mm=k_mm,
         b=b_value,
         scenario=scenario,
+        forecast_mode=request.forecast_mode,
     )
     current_section = build_effective_section(
         section=request.section,
@@ -142,3 +166,20 @@ def summarize_risk(results: List[ScenarioResult]) -> RiskProfile:
         ),
     )
 
+
+def build_dataset_version(request: CalculationRequest) -> DatasetVersionInfo:
+    measurement_rows = sum(len(inspection.measurements) for inspection in request.inspections)
+    if request.inspections:
+        latest = max(inspection.performed_at for inspection in request.inspections)
+        return DatasetVersionInfo(
+            code=f"inspection-history-{latest.isoformat()}",
+            source="inspection_history",
+            rows=measurement_rows,
+            notes="Observed inspection measurements anchored to the latest stored survey date.",
+        )
+    return DatasetVersionInfo(
+        code=f"synthetic-baseline-{request.environment_category.value.lower()}",
+        source="synthetic_baseline",
+        rows=len(request.zones),
+        notes="No inspection history supplied, so the calculation falls back to the classical atmospheric corrosion prior.",
+    )
