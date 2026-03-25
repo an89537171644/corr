@@ -478,6 +478,8 @@ function readReportRequest() {
   const outputFormats = [];
   if (form.get("format_docx")) outputFormats.push("docx");
   if (form.get("format_pdf")) outputFormats.push("pdf");
+  if (form.get("format_html")) outputFormats.push("html");
+  if (form.get("format_md")) outputFormats.push("md");
   return {
     report_title: blankToNull(form.get("report_title")),
     author: blankToNull(form.get("author")),

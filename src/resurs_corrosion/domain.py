@@ -310,6 +310,8 @@ class BaselineStoredElementRequest(BaseModel):
 class ReportFormat(str, Enum):
     DOCX = "docx"
     PDF = "pdf"
+    HTML = "html"
+    MD = "md"
 
 
 class BaselineReportRequest(BaselineStoredElementRequest):
@@ -331,6 +333,7 @@ class ReportArtifact(BaseModel):
 
 
 class ReportBundle(BaseModel):
+    analysis_id: Optional[int] = None
     report_title: str
     generated_at: datetime
     environment_category: EnvironmentCategory
@@ -338,6 +341,15 @@ class ReportBundle(BaseModel):
     scenario_count: int
     recommended_action: str
     artifacts: List[ReportArtifact]
+
+
+class AnalysisRunRead(BaseModel):
+    id: int
+    asset_id: Optional[int] = None
+    element_id: Optional[int] = None
+    generated_at: datetime
+    request: CalculationRequest
+    result: CalculationResponse
 
 
 class ImportFormat(str, Enum):

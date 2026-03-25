@@ -9,9 +9,10 @@ remaining service life.
 - FastAPI backend skeleton with versioned API routes.
 - SQLAlchemy persistence layer with local SQLite by default and PostgreSQL support via `DATABASE_URL`.
 - CRUD flows for assets, elements, zones, and inspection journals.
+- Persisted analysis runs with retrieval endpoints and compatibility aliases requested in the remediation notes.
 - Inspection-driven `delta_obs` and `v_z` evaluation per zone from stored surveys.
 - Hybrid degradation forecast that starts from the last observed state and applies an explicit rate-correction module.
-- Automatic engineering report generation in `DOCX` and `PDF` for stored analyses.
+- Automatic engineering report generation in `DOCX`, `PDF`, `HTML`, and `Markdown` for stored analyses.
 - Import from `CSV/XLSX` for assets, elements with zones, and inspections with measurements.
 - Built-in browser UI served directly by FastAPI at `/`.
 - Alembic migrations and controlled schema initialization modes for SQLite and PostgreSQL.
@@ -32,7 +33,8 @@ remaining service life.
   - axial compression with a stability factor
   - major-axis bending
 - Scenario library for `C2` to `C5` environments and first-line what-if cases.
-- Demo dataset and one-command demo runner under `data_examples/` and `scripts/`.
+- Three bundled demo datasets and one-command demo runner under `data_examples/` and `scripts/`.
+- Root project guidance in `AGENTS.md` and project-scoped Codex settings in `.codex/config.toml`.
 - Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, and `docs/limitations.md`.
 - Pytest coverage for the baseline formulas and API integration.
 
@@ -68,6 +70,12 @@ Run the bundled demo case:
 ```powershell
 python scripts/run_demo_case.py
 ```
+
+Alternative bundled demo inputs:
+
+- `data_examples/demo_case_c4.json`
+- `data_examples/demo_case_c3_column.json`
+- `data_examples/demo_case_c5_tube.json`
 
 By default the app uses `sqlite:///./app.db`. To point the API to PostgreSQL:
 
@@ -114,6 +122,9 @@ Manual migration command:
 - `GET /api/v1/environments`
 - `GET /api/v1/scenarios?environment_category=C3`
 - `GET|POST|PUT|DELETE /api/v1/assets`
+- `GET|POST /objects`
+- `GET /objects/{asset_id}`
+- `GET /objects/{asset_id}/elements`
 - `POST /api/v1/import/assets`
 - `GET|POST /api/v1/assets/{asset_id}/elements`
 - `POST /api/v1/assets/{asset_id}/import/elements`
@@ -123,6 +134,12 @@ Manual migration command:
 - `GET|PUT|DELETE /api/v1/inspections/{inspection_id}`
 - `POST /api/v1/elements/{element_id}/calculate/baseline`
 - `POST /api/v1/elements/{element_id}/reports/baseline`
+- `POST /analysis/run`
+- `POST /api/v1/analysis/run`
+- `GET /analysis/{analysis_id}`
+- `GET /api/v1/analyses/{analysis_id}`
+- `GET /report/{analysis_id}?format=html|md`
+- `GET /api/v1/analyses/{analysis_id}/report?format=html|md`
 - `GET /api/v1/reports/{element_id}/{filename}`
 - `POST /api/v1/calculate/baseline`
 
@@ -135,7 +152,7 @@ The root route `/` now serves a lightweight web application with:
 - inspection journal for the selected element
 - manual creation and update forms for assets, elements, zones, and measurements
 - engineering analysis with scenario table and timeline chart
-- report export links for `DOCX/PDF`
+- report export links for `DOCX/PDF/HTML/Markdown`
 - bulk upload entry points for `CSV/XLSX`
 
 ## Documentation
@@ -145,6 +162,7 @@ The root route `/` now serves a lightweight web application with:
 - [docs/calculation-model.md](docs/calculation-model.md)
 - [docs/ml-pipeline.md](docs/ml-pipeline.md)
 - [docs/limitations.md](docs/limitations.md)
+- [docs/remediation_checklist.md](docs/remediation_checklist.md)
 
 ## Deployment note
 
@@ -157,9 +175,10 @@ revision before serving requests.
 1. Create an asset.
 2. Add an element with section geometry, material, action, and zones.
 3. Register one or more inspections with thickness measurements.
-4. Run `POST /api/v1/elements/{element_id}/calculate/baseline` to calculate from stored data.
-5. Run `POST /api/v1/elements/{element_id}/reports/baseline` to export a baseline engineering report in `DOCX` and/or `PDF`.
-6. Use the import endpoints to bulk-load passports and inspection data from `CSV/XLSX`.
+4. Run `POST /api/v1/elements/{element_id}/calculate/baseline` to calculate from stored data. The response includes `X-Analysis-Id`.
+5. Retrieve the persisted analysis with `GET /analysis/{analysis_id}` or `GET /api/v1/analyses/{analysis_id}`.
+6. Run `POST /api/v1/elements/{element_id}/reports/baseline` to export an engineering report in `DOCX`, `PDF`, `HTML`, and/or `Markdown`.
+7. Use the import endpoints to bulk-load passports and inspection data from `CSV/XLSX`.
 
 ## Import workflow
 
@@ -197,3 +216,5 @@ The report includes:
 - scenario comparison
 - timeline snapshot
 - recommendation and next inspection horizon
+
+For compatibility with the remediation package, the same stored analysis can also be re-rendered through `GET /report/{analysis_id}?format=html|md`.

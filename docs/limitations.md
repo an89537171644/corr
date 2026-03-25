@@ -33,8 +33,8 @@ The MVP is intentionally engineering-first, but still simplified.
 
 ## Reporting and persistence
 
-- Reports are reproducible and exportable to DOCX/PDF, but markdown/html export artifacts are not persisted as first-class report files yet.
-- Analysis runs themselves are not yet stored as dedicated DB records with their own `GET /analysis/{id}` retrieval endpoint.
+- Reports are reproducible and exportable to DOCX/PDF/HTML/Markdown, but the office-format export still focuses on tabular narrative rather than branded enterprise templates.
+- Analysis runs are now stored in `analysis_runs` and retrievable through `GET /analysis/{id}`, but they are persisted as full JSON snapshots rather than a fully normalized analytical schema.
 
 ## Professional use boundary
 

@@ -4,11 +4,12 @@ from pathlib import Path
 from typing import List
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse
 from sqlalchemy.orm import Session
 
 from .db import get_session
 from .domain import (
+    AnalysisRunRead,
     AssetCreate,
     AssetRead,
     BaselineReportRequest,
@@ -25,10 +26,17 @@ from .domain import (
 from .scenarios import ENVIRONMENT_LIBRARY, default_scenario_library, get_environment_profile
 from .services.engine import run_calculation
 from .services.imports import import_assets, import_elements, import_inspections
-from .services.reports import generate_baseline_report_bundle
+from .services.reports import (
+    build_html_report,
+    build_markdown_report,
+    build_report_context_from_analysis,
+    generate_baseline_report_bundle,
+)
 from .storage import (
+    analysis_run_to_schema,
     asset_to_schema,
     build_calculation_request,
+    create_analysis_run,
     create_asset,
     create_element,
     create_inspection,
@@ -37,6 +45,7 @@ from .storage import (
     delete_inspection,
     element_to_schema,
     get_asset,
+    get_analysis_run,
     get_element,
     get_inspection,
     inspection_to_schema,
@@ -90,8 +99,15 @@ def list_scenarios(environment_category: str) -> dict:
 
 
 @router.post("/api/v1/calculate/baseline")
-def calculate_baseline(request: CalculationRequest) -> dict:
-    return run_calculation(request).model_dump()
+def calculate_baseline(
+    request: CalculationRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    result = run_calculation(request)
+    analysis_run = create_analysis_run(session, request, result)
+    response.headers["X-Analysis-Id"] = str(analysis_run.id)
+    return result.model_dump()
 
 
 @router.post("/api/v1/import/assets", response_model=ImportSummary)
@@ -111,9 +127,19 @@ def get_assets(session: Session = Depends(get_session)) -> List[AssetRead]:
     return [asset_to_schema(asset) for asset in list_assets(session)]
 
 
+@router.get("/objects", response_model=List[AssetRead])
+def get_objects(session: Session = Depends(get_session)) -> List[AssetRead]:
+    return get_assets(session)
+
+
 @router.post("/api/v1/assets", response_model=AssetRead, status_code=status.HTTP_201_CREATED)
 def post_asset(payload: AssetCreate, session: Session = Depends(get_session)) -> AssetRead:
     return asset_to_schema(create_asset(session, payload))
+
+
+@router.post("/objects", response_model=AssetRead, status_code=status.HTTP_201_CREATED)
+def post_object(payload: AssetCreate, session: Session = Depends(get_session)) -> AssetRead:
+    return post_asset(payload, session)
 
 
 @router.get("/api/v1/assets/{asset_id}", response_model=AssetRead)
@@ -122,6 +148,11 @@ def get_asset_by_id(asset_id: int, session: Session = Depends(get_session)) -> A
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found.")
     return asset_to_schema(asset)
+
+
+@router.get("/objects/{asset_id}", response_model=AssetRead)
+def get_object_by_id(asset_id: int, session: Session = Depends(get_session)) -> AssetRead:
+    return get_asset_by_id(asset_id, session)
 
 
 @router.put("/api/v1/assets/{asset_id}", response_model=AssetRead)
@@ -147,6 +178,11 @@ def get_elements_for_asset(asset_id: int, session: Session = Depends(get_session
     if asset is None:
         raise HTTPException(status_code=404, detail="Asset not found.")
     return [element_to_schema(element) for element in list_elements_by_asset(session, asset_id)]
+
+
+@router.get("/objects/{asset_id}/elements", response_model=List[ElementRead])
+def get_elements_for_object(asset_id: int, session: Session = Depends(get_session)) -> List[ElementRead]:
+    return get_elements_for_asset(asset_id, session)
 
 
 @router.post("/api/v1/assets/{asset_id}/elements", response_model=ElementRead, status_code=status.HTTP_201_CREATED)
@@ -267,13 +303,17 @@ def remove_inspection(inspection_id: int, session: Session = Depends(get_session
 def calculate_baseline_for_element(
     element_id: int,
     payload: BaselineStoredElementRequest,
+    response: Response,
     session: Session = Depends(get_session),
 ) -> dict:
     element = get_element(session, element_id)
     if element is None:
         raise HTTPException(status_code=404, detail="Element not found.")
     request = build_calculation_request(element, payload)
-    return run_calculation(request).model_dump()
+    result = run_calculation(request)
+    analysis_run = create_analysis_run(session, request, result, element_id=element_id)
+    response.headers["X-Analysis-Id"] = str(analysis_run.id)
+    return result.model_dump()
 
 
 @router.post(
@@ -290,7 +330,54 @@ def create_baseline_report(
     element = get_element(session, element_id)
     if element is None:
         raise HTTPException(status_code=404, detail="Element not found.")
-    return generate_baseline_report_bundle(element, payload, http_request.app.state.reports_dir)
+    request = build_calculation_request(element, payload)
+    result = run_calculation(request)
+    analysis_run = create_analysis_run(session, request, result, element_id=element_id)
+    return generate_baseline_report_bundle(
+        element,
+        payload,
+        http_request.app.state.reports_dir,
+        calculation_request=request,
+        calculation_response=result,
+        analysis_id=analysis_run.id,
+    )
+
+
+@router.post("/analysis/run", response_model=AnalysisRunRead, status_code=status.HTTP_201_CREATED)
+@router.post("/api/v1/analysis/run", response_model=AnalysisRunRead, status_code=status.HTTP_201_CREATED)
+def run_analysis_alias(request: CalculationRequest, session: Session = Depends(get_session)) -> AnalysisRunRead:
+    result = run_calculation(request)
+    analysis_run = create_analysis_run(session, request, result)
+    return analysis_run_to_schema(analysis_run)
+
+
+@router.get("/analysis/{analysis_id}", response_model=AnalysisRunRead)
+@router.get("/api/v1/analyses/{analysis_id}", response_model=AnalysisRunRead)
+def get_analysis_by_id(analysis_id: int, session: Session = Depends(get_session)) -> AnalysisRunRead:
+    analysis_run = get_analysis_run(session, analysis_id)
+    if analysis_run is None:
+        raise HTTPException(status_code=404, detail="Analysis not found.")
+    return analysis_run_to_schema(analysis_run)
+
+
+@router.get("/report/{analysis_id}")
+@router.get("/api/v1/analyses/{analysis_id}/report")
+def get_analysis_report(
+    analysis_id: int,
+    format: str = "html",
+    session: Session = Depends(get_session),
+):
+    analysis_run = get_analysis_run(session, analysis_id)
+    if analysis_run is None:
+        raise HTTPException(status_code=404, detail="Analysis not found.")
+
+    context = build_report_context_from_analysis(analysis_run_to_schema(analysis_run))
+    normalized_format = format.strip().lower()
+    if normalized_format == "html":
+        return HTMLResponse(content=build_html_report(context))
+    if normalized_format in {"md", "markdown"}:
+        return PlainTextResponse(content=build_markdown_report(context), media_type="text/markdown")
+    raise HTTPException(status_code=400, detail="Unsupported report format. Use html or md.")
 
 
 @router.get("/api/v1/reports/{element_id}/{filename}")
@@ -303,7 +390,13 @@ def download_report(element_id: int, filename: str, http_request: Request) -> Fi
     if base_dir not in report_path.parents or not report_path.exists():
         raise HTTPException(status_code=404, detail="Report not found.")
 
-    media_type = "application/pdf" if report_path.suffix.lower() == ".pdf" else (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    )
+    suffix = report_path.suffix.lower()
+    if suffix == ".pdf":
+        media_type = "application/pdf"
+    elif suffix == ".html":
+        media_type = "text/html"
+    elif suffix == ".md":
+        media_type = "text/markdown"
+    else:
+        media_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return FileResponse(path=report_path, media_type=media_type, filename=report_path.name)

@@ -19,23 +19,22 @@ The first delivery slice covers a deterministic baseline workflow:
 | Inspection journal | Implemented | CRUD API and relational measurement storage are available. |
 | ETL and validation | Implemented | Pydantic validation plus CSV/XLSX bulk import are available. |
 | Analytical degradation model | Implemented | Power-law and long-term continuation are available. |
-| Effective section recalculation | Implemented | `plate`, `i_section`, and `generic_reduced`. |
+| Effective section recalculation | Implemented | `plate`, `i_section`, `channel`, `angle`, `tube`, and `generic_reduced`. |
 | Residual resistance check | Implemented | Tension, compression, bending major axis. |
 | Remaining life forecast | Implemented | Timeline simulation with limit-state crossing detection. |
 | Risk profile | Partial | Scenario exceedance share is implemented, probabilistic block is pending. |
-| Report export | Implemented | Stored-element baseline reports export to DOCX and PDF. |
+| Report export | Implemented | Stored-element analyses export to DOCX, PDF, HTML, and Markdown. |
+| Persisted analyses and retrieval | Implemented | `analysis_runs` plus `GET /analysis/{id}` and `/report/{id}` compatibility routes are available. |
 | Web UI | Implemented | Built-in browser workspace at `/` covers registry, input, calculation, report export, and imports. |
 | Migration-ready persistence | Implemented | Alembic initial revision and controlled schema init modes are available. |
+| Hybrid ML/DL | Partial | Hybrid rate correction and provenance are implemented; full calibrated training pipeline remains pending. |
 | Image analysis | Deferred | Planned for phase II. |
-| Hybrid ML/DL | Deferred | Planned as an additive layer over baseline. |
 
 ## Assumptions that should be validated next
 
-- Expand section catalog beyond `i_section` and `plate`.
 - Formalize load cases and combinations from the structural model.
 - Define the exact report template and required attachments.
 - Decide how inspection quality `qi` affects calibration and confidence intervals.
 - Align the scenario risk proxy with the preferred acceptance methodology.
-- Replace startup `create_all` with versioned Alembic migrations before multi-user rollout.
 - Extend the report template with project-specific branding, appendices, and embedded figures.
 - Add import templates with downloadable sample files from the UI layer.

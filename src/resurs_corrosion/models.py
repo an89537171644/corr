@@ -59,6 +59,12 @@ class ElementModel(Base):
         passive_deletes=True,
         order_by="InspectionModel.performed_at.desc(), InspectionModel.id.desc()",
     )
+    analysis_runs: Mapped[List["AnalysisRunModel"]] = relationship(
+        back_populates="element",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        order_by="AnalysisRunModel.id.desc()",
+    )
 
 
 class ZoneModel(Base):
@@ -112,3 +118,15 @@ class MeasurementModel(Base):
     comment: Mapped[Optional[str]] = mapped_column(Text)
 
     inspection: Mapped["InspectionModel"] = relationship(back_populates="measurements")
+
+
+class AnalysisRunModel(Base):
+    __tablename__ = "analysis_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    element_id: Mapped[Optional[int]] = mapped_column(ForeignKey("elements.id", ondelete="CASCADE"), nullable=True, index=True)
+    request_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    result_data: Mapped[dict] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    element: Mapped[Optional["ElementModel"]] = relationship(back_populates="analysis_runs")

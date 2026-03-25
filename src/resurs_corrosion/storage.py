@@ -7,11 +7,13 @@ from sqlalchemy.orm import Session, selectinload
 
 from .domain import (
     ActionInput,
+    AnalysisRunRead,
     AssetCreate,
     AssetPassport,
     AssetRead,
     BaselineStoredElementRequest,
     CalculationRequest,
+    CalculationResponse,
     ElementCreate,
     ElementPassport,
     ElementRead,
@@ -24,7 +26,7 @@ from .domain import (
     ThicknessMeasurement,
     ZoneDefinition,
 )
-from .models import AssetModel, ElementModel, InspectionModel, MeasurementModel, ZoneModel
+from .models import AnalysisRunModel, AssetModel, ElementModel, InspectionModel, MeasurementModel, ZoneModel
 
 
 def list_assets(session: Session) -> List[AssetModel]:
@@ -93,6 +95,15 @@ def get_element(session: Session, element_id: int) -> Optional[ElementModel]:
     return session.scalars(statement).first()
 
 
+def get_analysis_run(session: Session, analysis_id: int) -> Optional[AnalysisRunModel]:
+    statement = (
+        select(AnalysisRunModel)
+        .where(AnalysisRunModel.id == analysis_id)
+        .options(selectinload(AnalysisRunModel.element).selectinload(ElementModel.asset))
+    )
+    return session.scalars(statement).first()
+
+
 def create_element(session: Session, asset_id: int, payload: ElementCreate) -> ElementModel:
     element = ElementModel(
         asset_id=asset_id,
@@ -132,6 +143,22 @@ def update_element(session: Session, element: ElementModel, payload: ElementCrea
 def delete_element(session: Session, element: ElementModel) -> None:
     session.delete(element)
     session.commit()
+
+
+def create_analysis_run(
+    session: Session,
+    request: CalculationRequest,
+    result: CalculationResponse,
+    element_id: Optional[int] = None,
+) -> AnalysisRunModel:
+    analysis_run = AnalysisRunModel(
+        element_id=element_id,
+        request_data=request.model_dump(mode="json"),
+        result_data=result.model_dump(mode="json"),
+    )
+    session.add(analysis_run)
+    session.commit()
+    return get_analysis_run(session, analysis_run.id)
 
 
 def list_inspections_for_element(session: Session, element_id: int) -> List[InspectionModel]:
@@ -235,6 +262,17 @@ def inspection_to_schema(inspection: InspectionModel) -> InspectionRead:
         executor=inspection.executor,
         findings=inspection.findings,
         measurements=[measurement_to_schema(item) for item in inspection.measurements],
+    )
+
+
+def analysis_run_to_schema(analysis_run: AnalysisRunModel) -> AnalysisRunRead:
+    return AnalysisRunRead(
+        id=analysis_run.id,
+        asset_id=analysis_run.element.asset_id if analysis_run.element is not None else None,
+        element_id=analysis_run.element_id,
+        generated_at=analysis_run.created_at,
+        request=CalculationRequest.model_validate(analysis_run.request_data),
+        result=CalculationResponse.model_validate(analysis_run.result_data),
     )
 
 

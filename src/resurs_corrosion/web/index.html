@@ -311,7 +311,7 @@
               <div class="card-head">
                 <div class="card-head-copy">
                   <h2>Report Export</h2>
-                  <p>Build a report preview, then generate DOCX and PDF artifacts from the stored analysis context.</p>
+                  <p>Build a report preview, then generate DOCX, PDF, HTML, and Markdown artifacts from the stored analysis context.</p>
                 </div>
               </div>
               <form id="reportForm" class="form-grid">
@@ -334,6 +334,8 @@
                 <div class="checkbox-row span-all">
                   <label><input type="checkbox" name="format_docx" checked> DOCX</label>
                   <label><input type="checkbox" name="format_pdf" checked> PDF</label>
+                  <label><input type="checkbox" name="format_html"> HTML</label>
+                  <label><input type="checkbox" name="format_md"> Markdown</label>
                 </div>
                 <div class="form-actions span-all">
                   <button type="button" class="ghost-button" id="previewReportBtn">Preview Report</button>

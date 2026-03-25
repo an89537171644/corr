@@ -1,0 +1,85 @@
+{
+  "asset": {
+    "name": "Demo coastal bracing case",
+    "address": "Baltic coastal zone",
+    "commissioned_year": 2001,
+    "purpose": "Open steel rack",
+    "responsibility_class": "KS-3"
+  },
+  "element": {
+    "element_id": "BR-C5-01",
+    "element_type": "brace",
+    "steel_grade": "C345",
+    "work_scheme": "axial tension",
+    "operating_zone": "marine splash and windward side"
+  },
+  "environment_category": "C5",
+  "section": {
+    "section_type": "tube",
+    "outer_diameter_mm": 219.0,
+    "wall_thickness_mm": 10.0
+  },
+  "zones": [
+    {
+      "zone_id": "outer_shell",
+      "role": "tube_wall",
+      "initial_thickness_mm": 10.0,
+      "exposed_surfaces": 2,
+      "pitting_factor": 0.2,
+      "pit_loss_mm": 0.6
+    }
+  ],
+  "material": {
+    "fy_mpa": 345.0,
+    "gamma_m": 1.05,
+    "stability_factor": 1.0
+  },
+  "action": {
+    "check_type": "axial_tension",
+    "demand_value": 520.0,
+    "demand_growth_factor_per_year": 0.01
+  },
+  "current_service_life_years": 24.0,
+  "forecast_horizon_years": 10.0,
+  "time_step_years": 0.5,
+  "forecast_mode": "hybrid",
+  "inspections": [
+    {
+      "inspection_id": "INSP-2023",
+      "performed_at": "2023-05-11",
+      "method": "ultrasonic",
+      "executor": "Marine inspection unit",
+      "findings": "Pronounced corrosion under damaged coating.",
+      "measurements": [
+        {
+          "zone_id": "outer_shell",
+          "point_id": "T-01",
+          "thickness_mm": 8.9,
+          "error_mm": 0.1,
+          "measured_at": "2023-05-11",
+          "quality": 0.91,
+          "units": "mm"
+        }
+      ]
+    },
+    {
+      "inspection_id": "INSP-2026",
+      "performed_at": "2026-03-18",
+      "method": "ultrasonic",
+      "executor": "Marine inspection unit",
+      "findings": "Accelerated loss near clamp connection.",
+      "measurements": [
+        {
+          "zone_id": "outer_shell",
+          "point_id": "T-02",
+          "thickness_mm": 8.1,
+          "error_mm": 0.1,
+          "measured_at": "2026-03-18",
+          "quality": 0.93,
+          "units": "mm",
+          "comment": "Windward side close to connection gusset."
+        }
+      ]
+    }
+  ]
+}

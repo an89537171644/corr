@@ -16,6 +16,7 @@ def test_root_ui_served(client) -> None:
     assert response.status_code == 200
     assert "Corrosion Residual Life Lab" in response.text
     assert "Preview Report" in response.text
+    assert "Markdown" in response.text
 
 
 def test_calculate_baseline_endpoint(client) -> None:
@@ -51,11 +52,12 @@ def test_calculate_baseline_endpoint(client) -> None:
     assert body["forecast_mode"] == "hybrid"
     assert len(body["results"]) == 5
     assert "risk_profile" in body
+    assert int(response.headers["X-Analysis-Id"]) > 0
 
 
 def test_persisted_asset_element_inspection_workflow(client) -> None:
     asset_response = client.post(
-        "/api/v1/assets",
+        "/objects",
         json={
             "name": "Warehouse frame",
             "address": "Moscow region",
@@ -66,6 +68,9 @@ def test_persisted_asset_element_inspection_workflow(client) -> None:
     )
     assert asset_response.status_code == 201
     asset_id = asset_response.json()["id"]
+    objects_response = client.get("/objects")
+    assert objects_response.status_code == 200
+    assert len(objects_response.json()) == 1
 
     element_payload = {
         "element_id": "COL-7",
@@ -104,6 +109,9 @@ def test_persisted_asset_element_inspection_workflow(client) -> None:
     element_response = client.post(f"/api/v1/assets/{asset_id}/elements", json=element_payload)
     assert element_response.status_code == 201
     element_id = element_response.json()["id"]
+    object_elements_response = client.get(f"/objects/{asset_id}/elements")
+    assert object_elements_response.status_code == 200
+    assert object_elements_response.json()[0]["element_id"] == "COL-7"
 
     inspection_response = client.post(
         f"/api/v1/elements/{element_id}/inspections",
@@ -145,6 +153,7 @@ def test_persisted_asset_element_inspection_workflow(client) -> None:
     assert len(body["results"]) == 5
     assert len(body["zone_observations"]) == 1
     assert body["results"][0]["section"]["area_mm2"] > 0
+    assert int(calc_response.headers["X-Analysis-Id"]) > 0
 
 
 def test_update_asset_element_and_inspection_endpoints(client) -> None:
@@ -421,17 +430,20 @@ def test_generate_and_download_reports(client) -> None:
             "author": "Codex",
             "forecast_horizon_years": 12,
             "time_step_years": 1,
-            "output_formats": ["docx", "pdf"],
+            "output_formats": ["docx", "pdf", "html", "md"],
         },
     )
     assert report_response.status_code == 201
     bundle = report_response.json()
+    assert bundle["analysis_id"] > 0
     assert bundle["scenario_count"] == 5
-    assert len(bundle["artifacts"]) == 2
+    assert len(bundle["artifacts"]) == 4
 
     artifacts = {item["format"]: item for item in bundle["artifacts"]}
     assert artifacts["docx"]["size_bytes"] > 0
     assert artifacts["pdf"]["size_bytes"] > 0
+    assert artifacts["html"]["size_bytes"] > 0
+    assert artifacts["md"]["size_bytes"] > 0
 
     docx_download = client.get(artifacts["docx"]["download_url"])
     assert docx_download.status_code == 200
@@ -440,6 +452,70 @@ def test_generate_and_download_reports(client) -> None:
     pdf_download = client.get(artifacts["pdf"]["download_url"])
     assert pdf_download.status_code == 200
     assert pdf_download.content[:4] == b"%PDF"
+
+    html_download = client.get(artifacts["html"]["download_url"])
+    assert html_download.status_code == 200
+    assert "<!doctype html>" in html_download.text.lower()
+
+    md_download = client.get(artifacts["md"]["download_url"])
+    assert md_download.status_code == 200
+    assert "# Residual life report" in md_download.text
+
+    persisted_analysis = client.get(f"/analysis/{bundle['analysis_id']}")
+    assert persisted_analysis.status_code == 200
+    assert persisted_analysis.json()["id"] == bundle["analysis_id"]
+
+    html_alias = client.get(f"/report/{bundle['analysis_id']}?format=html")
+    assert html_alias.status_code == 200
+    assert "Residual life report for BEAM-12" in html_alias.text
+
+    md_alias = client.get(f"/report/{bundle['analysis_id']}?format=md")
+    assert md_alias.status_code == 200
+    assert "# Residual life report for BEAM-12" in md_alias.text
+
+
+def test_analysis_alias_persists_direct_request(client) -> None:
+    payload = {
+        "asset": {"name": "Alias object"},
+        "element": {"element_id": "AL-01", "element_type": "beam"},
+        "environment_category": "C2",
+        "section": {
+            "section_type": "plate",
+            "width_mm": 180,
+            "thickness_mm": 8,
+        },
+        "zones": [
+            {
+                "zone_id": "z1",
+                "role": "plate",
+                "initial_thickness_mm": 8,
+                "exposed_surfaces": 2,
+            }
+        ],
+        "material": {"fy_mpa": 245, "gamma_m": 1.05, "stability_factor": 0.9},
+        "action": {"check_type": "axial_tension", "demand_value": 150},
+        "current_service_life_years": 8,
+        "forecast_horizon_years": 6,
+        "time_step_years": 1,
+    }
+
+    run_response = client.post("/analysis/run", json=payload)
+    assert run_response.status_code == 201
+    analysis = run_response.json()
+    assert analysis["result"]["environment_category"] == "C2"
+    assert analysis["element_id"] is None
+
+    fetch_response = client.get(f"/api/v1/analyses/{analysis['id']}")
+    assert fetch_response.status_code == 200
+    assert fetch_response.json()["request"]["element"]["element_id"] == "AL-01"
+
+    html_response = client.get(f"/report/{analysis['id']}?format=html")
+    assert html_response.status_code == 200
+    assert "Residual life report for AL-01" in html_response.text
+
+    md_response = client.get(f"/report/{analysis['id']}?format=md")
+    assert md_response.status_code == 200
+    assert "# Residual life report for AL-01" in md_response.text
 
 
 def test_import_assets_elements_and_inspections(client) -> None:

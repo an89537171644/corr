@@ -1,0 +1,11 @@
+[project]
+name = "corr"
+language = "python"
+entrypoint = "src/resurs_corrosion/main.py"
+
+[instructions]
+summary = "Engineering-first corrosion and residual-life MVP with FastAPI, SQLAlchemy, report export, and stored analysis runs."
+
+[preferences]
+test_command = ".venv\\Scripts\\python -m pytest"
+server_command = ".venv\\Scripts\\python -m uvicorn resurs_corrosion.main:app --host 127.0.0.1 --port 8000"
