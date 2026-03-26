@@ -58,6 +58,86 @@ const refs = {
   sectionTypeSelect: document.getElementById("sectionTypeSelect"),
 };
 
+const ZONE_PRESETS = Object.freeze({
+  i_section: [
+    {
+      zone_id: "top",
+      role: "top_flange",
+      label: "Верхняя полка",
+      description: "Верхний пояс двутавра. Используйте для верхней полки, если ее коррозия отличается от остальных частей сечения.",
+    },
+    {
+      zone_id: "bottom",
+      role: "bottom_flange",
+      label: "Нижняя полка",
+      description: "Нижний пояс двутавра. Обычно эта зона работает отдельно от верхней полки и стенки.",
+    },
+    {
+      zone_id: "web",
+      role: "web",
+      label: "Стенка",
+      description: "Вертикальная стенка профиля между полками. Для нее часто задают две открытые поверхности.",
+    },
+  ],
+  plate: [
+    {
+      zone_id: "plate_main",
+      role: "plate",
+      label: "Основная поверхность",
+      description: "Основная рабочая часть листа или пластины без локального выделения кромок и опорных участков.",
+    },
+    {
+      zone_id: "plate_edge",
+      role: "plate",
+      label: "Кромка / стык",
+      description: "Кромка листа, сварной стык или зона примыкания, где коррозия может идти интенсивнее основной поверхности.",
+    },
+    {
+      zone_id: "plate_support",
+      role: "plate",
+      label: "Опорный участок",
+      description: "Локальная опорная зона листового элемента около опирания, узла или крепления.",
+    },
+  ],
+  generic_reduced: [
+    {
+      zone_id: "zone_1",
+      role: "zone_1",
+      label: "Зона 1",
+      description: "Первая расчетная зона обобщенного элемента. Используйте для наиболее характерного участка коррозии.",
+    },
+    {
+      zone_id: "zone_2",
+      role: "zone_2",
+      label: "Зона 2",
+      description: "Вторая расчетная зона обобщенного элемента для участка с отличающейся толщиной или интенсивностью деградации.",
+    },
+    {
+      zone_id: "zone_3",
+      role: "zone_3",
+      label: "Зона 3",
+      description: "Третья расчетная зона обобщенного элемента. При необходимости можно добавить несколько зон такого типа.",
+    },
+  ],
+});
+
+const ZONE_GUIDES = Object.freeze({
+  i_section: "Для двутавра зоны задаются как верхняя полка, нижняя полка и стенка. В журнале обследований выбирайте ту же зону, где выполнен конкретный замер.",
+  plate: "Для листового элемента зона отражает участок поверхности: основную часть листа, кромку/стык или локальный опорный участок.",
+  generic_reduced: "Для обобщенного сечения зоны задаются как условные расчетные области. Используйте их последовательно и одинаково в паспорте элемента и в замерах.",
+});
+
+const KNOWN_ZONE_OPTIONS = Object.freeze(
+  Object.values(ZONE_PRESETS)
+    .flat()
+    .reduce((accumulator, option) => {
+      if (!accumulator.some((item) => item.zone_id === option.zone_id)) {
+        accumulator.push(option);
+      }
+      return accumulator;
+    }, []),
+);
+
 document.addEventListener("DOMContentLoaded", () => {
   bindEvents();
   resetAssetForm();
@@ -1308,28 +1388,51 @@ function clearDerivedOutputs() {
 }
 
 function defaultZoneRows() {
+  const sectionType = getCurrentSectionType();
+  if (sectionType === "plate") {
+    const thickness = numberOrNull(refs.elementForm?.elements["thickness_mm"]?.value) ?? 10;
+    return [
+      { zone_id: "plate_main", role: "plate", initial_thickness_mm: thickness, exposed_surfaces: 2, pitting_factor: 0, pit_loss_mm: 0 },
+    ];
+  }
+
+  if (sectionType === "generic_reduced") {
+    const thickness = numberOrNull(refs.elementForm?.elements["reference_thickness_mm"]?.value) ?? 10;
+    return [
+      { zone_id: "zone_1", role: "zone_1", initial_thickness_mm: thickness, exposed_surfaces: 2, pitting_factor: 0, pit_loss_mm: 0 },
+    ];
+  }
+
+  const flangeThickness = numberOrNull(refs.elementForm?.elements["flange_thickness_mm"]?.value) ?? 12;
+  const webThickness = numberOrNull(refs.elementForm?.elements["web_thickness_mm"]?.value) ?? 8;
   return [
-    { zone_id: "top", role: "top_flange", initial_thickness_mm: 12, exposed_surfaces: 1, pitting_factor: 0, pit_loss_mm: 0 },
-    { zone_id: "bottom", role: "bottom_flange", initial_thickness_mm: 12, exposed_surfaces: 1, pitting_factor: 0, pit_loss_mm: 0 },
-    { zone_id: "web", role: "web", initial_thickness_mm: 8, exposed_surfaces: 2, pitting_factor: 0, pit_loss_mm: 0 },
+    { zone_id: "top", role: "top_flange", initial_thickness_mm: flangeThickness, exposed_surfaces: 1, pitting_factor: 0, pit_loss_mm: 0 },
+    { zone_id: "bottom", role: "bottom_flange", initial_thickness_mm: flangeThickness, exposed_surfaces: 1, pitting_factor: 0, pit_loss_mm: 0 },
+    { zone_id: "web", role: "web", initial_thickness_mm: webThickness, exposed_surfaces: 2, pitting_factor: 0, pit_loss_mm: 0 },
   ];
 }
 
 function defaultMeasurementRows() {
+  const measurementZone = getPreferredMeasurementZoneOptions()[0]?.zone_id || "web";
   return [
-    { zone_id: "web", point_id: "W-1", thickness_mm: 7.5, error_mm: 0.1, measured_at: todayIso(), quality: 0.95 },
+    { zone_id: measurementZone, point_id: "M-1", thickness_mm: 7.5, error_mm: 0.1, measured_at: todayIso(), quality: 0.95 },
   ];
 }
 
 function addZoneRow(initial = {}) {
   const row = refs.zoneRowTemplate.content.firstElementChild.cloneNode(true);
+  enhanceZoneRow(row, initial);
   fillRow(row, initial);
+  syncElementZoneRow(row);
   attachRow(row, refs.zoneRows);
+  refreshMeasurementZoneSelects();
 }
 
 function addMeasurementRow(initial = {}) {
   const row = refs.measurementRowTemplate.content.firstElementChild.cloneNode(true);
+  enhanceMeasurementRow(row, initial);
   fillRow(row, initial);
+  syncMeasurementRow(row);
   attachRow(row, refs.measurementRows);
 }
 
@@ -1343,7 +1446,12 @@ function fillRow(row, values) {
 }
 
 function attachRow(row, target) {
-  row.querySelector(".remove-row").addEventListener("click", () => row.remove());
+  row.querySelector(".remove-row").addEventListener("click", () => {
+    row.remove();
+    if (target === refs.zoneRows) {
+      refreshMeasurementZoneSelects();
+    }
+  });
   target.appendChild(row);
 }
 
@@ -1361,6 +1469,294 @@ function syncSectionFields() {
   const sectionType = refs.sectionTypeSelect.value;
   document.querySelectorAll(".section-field").forEach((field) => field.classList.remove("visible"));
   document.querySelectorAll(`.${cssClassForSection(sectionType)}`).forEach((field) => field.classList.add("visible"));
+  refreshZoneEditors();
+}
+
+function getCurrentSectionType() {
+  return refs.sectionTypeSelect?.value || getSelectedElement()?.section?.section_type || "i_section";
+}
+
+function getBaseZonePresets(sectionType = getCurrentSectionType()) {
+  return ZONE_PRESETS[sectionType] || ZONE_PRESETS.i_section;
+}
+
+function enhanceZoneRow(row, initial = {}) {
+  ensureZoneGuide();
+  const zoneIdInput = row.querySelector('[data-field="zone_id"]');
+  const roleInput = row.querySelector('[data-field="role"]');
+  hideBackingField(zoneIdInput);
+  hideBackingField(roleInput);
+  prepareRowInput(row, "initial_thickness_mm", "Исходная толщина, мм");
+  prepareRowInput(row, "exposed_surfaces", "Открытые поверхности");
+  prepareRowInput(row, "pitting_factor", "Коэффициент питтинга");
+  prepareRowInput(row, "pit_loss_mm", "Потеря от питтинга, мм");
+
+  const select = ensureZoneSelect(row, "element", "Зона");
+  if (!row.dataset.zoneSelectBound) {
+    select.addEventListener("change", () => {
+      syncElementZoneRow(row);
+      refreshMeasurementZoneSelects();
+    });
+    row.dataset.zoneSelectBound = "true";
+  }
+
+  const options = buildElementZoneOptions(initial);
+  populateZoneSelect(select, options, initial.zone_id);
+}
+
+function enhanceMeasurementRow(row, initial = {}) {
+  const zoneIdInput = row.querySelector('[data-field="zone_id"]');
+  hideBackingField(zoneIdInput);
+  prepareRowInput(row, "point_id", "Точка измерения");
+  prepareRowInput(row, "thickness_mm", "Толщина, мм");
+  prepareRowInput(row, "error_mm", "Погрешность, мм");
+  prepareRowInput(row, "measured_at", "Дата замера");
+  prepareRowInput(row, "quality", "Качество 0...1");
+
+  const select = ensureZoneSelect(row, "measurement", "Зона замера");
+  if (!row.dataset.measurementZoneSelectBound) {
+    select.addEventListener("change", () => syncMeasurementRow(row));
+    row.dataset.measurementZoneSelectBound = "true";
+  }
+
+  populateZoneSelect(select, getPreferredMeasurementZoneOptions(initial), initial.zone_id);
+}
+
+function hideBackingField(input) {
+  if (!input) {
+    return;
+  }
+  input.type = "hidden";
+  input.tabIndex = -1;
+  input.classList.add("backing-field");
+}
+
+function prepareRowInput(row, fieldName, placeholder) {
+  const input = row.querySelector(`[data-field="${fieldName}"]`);
+  if (!input) {
+    return;
+  }
+  wrapInputWithLabel(input, placeholder);
+  input.placeholder = placeholder;
+  input.title = placeholder;
+}
+
+function ensureZoneGuide() {
+  const parent = refs.zoneRows?.parentElement;
+  if (!parent) {
+    return;
+  }
+  let guide = document.getElementById("zoneGuide");
+  if (!guide) {
+    guide = document.createElement("p");
+    guide.id = "zoneGuide";
+    guide.className = "subgrid-guide";
+    refs.zoneRows.insertAdjacentElement("beforebegin", guide);
+  }
+  guide.textContent = ZONE_GUIDES[getCurrentSectionType()] || ZONE_GUIDES.i_section;
+}
+
+function ensureZoneSelect(row, kind, label) {
+  let container = row.querySelector(".zone-select-field");
+  if (!container) {
+    container = document.createElement("div");
+    container.className = "row-field zone-select-field";
+
+    const title = document.createElement("span");
+    title.className = "row-label";
+    title.textContent = label;
+
+    const select = document.createElement("select");
+    select.dataset.zoneSelect = kind;
+
+    const help = document.createElement("small");
+    help.className = "row-help";
+    help.dataset.zoneDescription = "true";
+
+    container.append(title, select, help);
+    row.prepend(container);
+  }
+
+  return container.querySelector("select");
+}
+
+function buildElementZoneOptions(initial = {}) {
+  return dedupeZoneOptions([
+    ...getBaseZonePresets(),
+    ...readVisibleZoneDefinitions(),
+    normalizeZoneOption(initial),
+  ].filter(Boolean));
+}
+
+function getPreferredMeasurementZoneOptions(initial = {}) {
+  const draftZones = readVisibleZoneDefinitions();
+  if (draftZones.length) {
+    return dedupeZoneOptions([...draftZones, normalizeZoneOption(initial)].filter(Boolean));
+  }
+
+  const selectedElement = getSelectedElement();
+  if (selectedElement?.zones?.length) {
+    return dedupeZoneOptions([
+      ...selectedElement.zones.map((zone) => normalizeZoneOption(zone, selectedElement.section?.section_type)),
+      normalizeZoneOption(initial, selectedElement.section?.section_type),
+    ].filter(Boolean));
+  }
+
+  return dedupeZoneOptions([
+    ...getBaseZonePresets(),
+    normalizeZoneOption(initial),
+  ].filter(Boolean));
+}
+
+function readVisibleZoneDefinitions() {
+  return Array.from(refs.zoneRows.querySelectorAll(".data-row")).map((row) => {
+    const zoneId = row.querySelector('[data-field="zone_id"]')?.value;
+    const role = row.querySelector('[data-field="role"]')?.value;
+    if (!zoneId) {
+      return null;
+    }
+    return normalizeZoneOption({ zone_id: zoneId, role });
+  }).filter(Boolean);
+}
+
+function normalizeZoneOption(zone, sectionType = getCurrentSectionType()) {
+  if (!zone || (!zone.zone_id && !zone.role)) {
+    return null;
+  }
+
+  const presets = ZONE_PRESETS[sectionType] || getBaseZonePresets(sectionType);
+  const match = presets.find((item) => item.zone_id === zone.zone_id || (zone.role && item.role === zone.role));
+  if (match) {
+    return {
+      zone_id: zone.zone_id || match.zone_id,
+      role: zone.role || match.role,
+      label: match.label,
+      description: match.description,
+    };
+  }
+
+  const knownMatch = KNOWN_ZONE_OPTIONS.find((item) => item.zone_id === zone.zone_id || (zone.role && item.role === zone.role));
+  if (knownMatch) {
+    return {
+      zone_id: zone.zone_id || knownMatch.zone_id,
+      role: zone.role || knownMatch.role,
+      label: `${knownMatch.label} (${zone.zone_id || knownMatch.zone_id})`,
+      description: `${knownMatch.description} Технический код зоны: ${zone.zone_id || knownMatch.zone_id}.`,
+    };
+  }
+
+  return {
+    zone_id: zone.zone_id,
+    role: zone.role || zone.zone_id,
+    label: `Своя зона: ${zone.zone_id}`,
+    description: `Пользовательская зона с кодом "${zone.zone_id}". Используйте тот же код в связанных замерах.`,
+  };
+}
+
+function dedupeZoneOptions(options) {
+  const seen = new Map();
+  options.forEach((option) => {
+    if (option?.zone_id && !seen.has(option.zone_id)) {
+      seen.set(option.zone_id, option);
+    }
+  });
+  return Array.from(seen.values());
+}
+
+function populateZoneSelect(select, options, selectedValue) {
+  select.innerHTML = options.map((option) => `
+    <option value="${escapeHtml(option.zone_id)}" data-role="${escapeHtml(option.role)}" data-description="${escapeHtml(option.description)}">
+      ${escapeHtml(option.label)}
+    </option>
+  `).join("");
+
+  if (!options.length) {
+    select.innerHTML = '<option value="">Зона не задана</option>';
+    return;
+  }
+
+  const resolvedValue = options.some((option) => option.zone_id === selectedValue) ? selectedValue : options[0].zone_id;
+  select.value = resolvedValue;
+}
+
+function wrapInputWithLabel(input, label) {
+  if (!input) {
+    return;
+  }
+
+  const existingWrapper = input.closest(".row-field");
+  if (existingWrapper) {
+    const existingLabel = existingWrapper.querySelector(".row-label");
+    if (existingLabel) {
+      existingLabel.textContent = label;
+    }
+    return;
+  }
+
+  const wrapper = document.createElement("div");
+  wrapper.className = "row-field";
+
+  const title = document.createElement("span");
+  title.className = "row-label";
+  title.textContent = label;
+
+  input.parentNode.insertBefore(wrapper, input);
+  wrapper.append(title, input);
+}
+
+function syncElementZoneRow(row) {
+  const select = row.querySelector('[data-zone-select="element"]');
+  const zoneIdInput = row.querySelector('[data-field="zone_id"]');
+  const roleInput = row.querySelector('[data-field="role"]');
+  const description = row.querySelector("[data-zone-description]");
+  const selectedOption = select?.selectedOptions?.[0];
+
+  if (zoneIdInput) {
+    zoneIdInput.value = select?.value || "";
+  }
+  if (roleInput) {
+    roleInput.value = selectedOption?.dataset.role || "";
+  }
+  if (description) {
+    description.textContent = selectedOption?.dataset.description || "";
+  }
+}
+
+function syncMeasurementRow(row) {
+  const select = row.querySelector('[data-zone-select="measurement"]');
+  const zoneIdInput = row.querySelector('[data-field="zone_id"]');
+  const description = row.querySelector("[data-zone-description]");
+  const selectedOption = select?.selectedOptions?.[0];
+
+  if (zoneIdInput) {
+    zoneIdInput.value = select?.value || "";
+  }
+  if (description) {
+    description.textContent = selectedOption?.dataset.description || "";
+  }
+}
+
+function refreshZoneEditors() {
+  ensureZoneGuide();
+  Array.from(refs.zoneRows.querySelectorAll(".data-row")).forEach((row) => {
+    const initial = {
+      zone_id: row.querySelector('[data-field="zone_id"]')?.value,
+      role: row.querySelector('[data-field="role"]')?.value,
+    };
+    enhanceZoneRow(row, initial);
+    syncElementZoneRow(row);
+  });
+  refreshMeasurementZoneSelects();
+}
+
+function refreshMeasurementZoneSelects() {
+  Array.from(refs.measurementRows.querySelectorAll(".data-row")).forEach((row) => {
+    const initial = {
+      zone_id: row.querySelector('[data-field="zone_id"]')?.value,
+    };
+    enhanceMeasurementRow(row, initial);
+    syncMeasurementRow(row);
+  });
 }
 
 function cssClassForSection(sectionType) {

@@ -36,19 +36,20 @@ class TrainingSummary:
     execution_mode: str = "heuristic"
     blend_mode: str = "heuristic_only"
     interval_source: str = "heuristic_band"
+    coverage_score: float = 0.0
+    training_regime: str = "heuristic_anchor"
 
 
 class HybridRateEnsembleModel:
     """Engineering-first hybrid rate-correction ensemble.
 
-    The model keeps the legacy deterministic heuristic as the baseline/fallback.
-    When training data is provided, it can fit a lightweight candidate pool and
-    average available predictors while still anchoring predictions to the
-    heuristic factor.
+    The model keeps the deterministic heuristic as the anchor and, when
+    available, blends it with accepted candidate regressors. It never predicts
+    member capacity directly; it only corrects future degradation rate.
     """
 
     name = "hybrid_rate_ensemble"
-    version = "0.3.0"
+    version = "0.4.0"
 
     def __init__(
         self,
@@ -68,6 +69,8 @@ class HybridRateEnsembleModel:
             accepted_row_count=len(matrix.targets),
             rejected_row_count=matrix.rejected_row_count,
             execution_mode="heuristic",
+            coverage_score=min(1.0, len(matrix.targets) / 12.0) if matrix.targets else 0.0,
+            training_regime="candidate_screening",
         )
 
         minimum_rows = int(summary.acceptance_policy.get("minimum_rows", 3))
@@ -77,6 +80,7 @@ class HybridRateEnsembleModel:
             summary.execution_mode = "fallback"
             summary.blend_mode = "heuristic_only"
             summary.interval_source = "heuristic_band"
+            summary.training_regime = "insufficient_rows_fallback"
             summary.candidate_registry = [
                 {
                     "name": "candidate_pool",
@@ -114,14 +118,23 @@ class HybridRateEnsembleModel:
         ]
         summary.accepted_candidate_count = sum(1 for item in candidate_registry if item.status == "accepted")
         summary.rejected_candidate_count = sum(1 for item in candidate_registry if item.status != "accepted")
-        if self.candidate_models:
-            summary.execution_mode = "trained"
-            summary.blend_mode = "candidate_mean_plus_heuristic_anchor"
+
+        if len(self.candidate_models) > 1:
+            summary.execution_mode = "trained_ensemble"
+            summary.training_regime = "candidate_registry_ensemble"
+            summary.blend_mode = "weighted_candidate_mean_plus_heuristic_anchor"
             summary.interval_source = "candidate_spread_plus_heuristic_padding"
+        elif len(self.candidate_models) == 1:
+            summary.execution_mode = "trained_single"
+            summary.training_regime = "single_candidate_anchor"
+            summary.blend_mode = "single_candidate_plus_heuristic_anchor"
+            summary.interval_source = "candidate_plus_heuristic_padding"
         else:
             summary.execution_mode = "fallback"
+            summary.training_regime = "candidate_rejection_fallback"
             summary.blend_mode = "heuristic_only"
             summary.interval_source = "heuristic_band"
+
         self.training_summary = summary
         return self
 
@@ -130,45 +143,50 @@ class HybridRateEnsembleModel:
 
     def predict_rate_factor(self, features: DegradationFeatureVector) -> float:
         heuristic_factor = self._heuristic_rate_factor(features)
-        if not self.candidate_models:
-            return heuristic_factor
-
-        feature_row = degradation_feature_to_list(features)
-        candidate_predictions = []
-        for candidate in self.candidate_models:
-            try:
-                candidate_predictions.append(candidate.predict_rate_factor(feature_row))
-            except Exception:
-                continue
-
+        candidate_predictions = self._candidate_predictions(features)
         if not candidate_predictions:
             return heuristic_factor
 
-        candidate_mean = sum(candidate_predictions) / len(candidate_predictions)
-        blended = (0.60 * candidate_mean) + (0.40 * heuristic_factor)
+        if len(candidate_predictions) == 1:
+            blended = (0.65 * candidate_predictions[0]) + (0.35 * heuristic_factor)
+        else:
+            candidate_mean = sum(candidate_predictions) / len(candidate_predictions)
+            blended = (0.60 * candidate_mean) + (0.40 * heuristic_factor)
         return max(0.55, min(1.85, blended))
 
     def predict_interval(self, features: DegradationFeatureVector) -> Tuple[float, float]:
         heuristic_factor = self._heuristic_rate_factor(features)
-        if not self.candidate_models:
-            return max(0.0, heuristic_factor * 0.85), heuristic_factor * 1.15
-
-        feature_row = degradation_feature_to_list(features)
-        predictions = [heuristic_factor]
-        for candidate in self.candidate_models:
-            try:
-                predictions.append(candidate.predict_rate_factor(feature_row))
-            except Exception:
-                continue
-
+        predictions = [heuristic_factor] + self._candidate_predictions(features)
         lower = min(predictions)
         upper = max(predictions)
         padding = max(0.05, 0.08 * heuristic_factor)
         return max(0.0, lower - padding), upper + padding
 
+    def runtime_diagnostics(self, features: DegradationFeatureVector) -> dict:
+        factor = self.predict_rate_factor(features)
+        lower, upper = self.predict_interval(features)
+        warnings: list[str] = []
+        if self.training_summary.execution_mode in {"heuristic", "fallback"}:
+            warnings.append("ml_heuristic_anchor_only")
+        if self.training_summary.coverage_score < 0.45:
+            warnings.append("weak_training_coverage")
+        if factor <= 0.56 or factor >= 1.84:
+            warnings.append("ml_correction_clamped")
+        if abs(factor - 1.0) >= 0.35:
+            warnings.append("strong_ml_correction")
+
+        return {
+            "ml_correction_factor": factor,
+            "coverage_score": float(self.training_summary.coverage_score),
+            "training_regime": self.training_summary.training_regime,
+            "ml_warning_flags": warnings,
+            "interval_factor_lower": lower,
+            "interval_factor_upper": upper,
+        }
+
     def save_model(self, file_path: Path) -> None:
         payload = {
-            "format": "hybrid_rate_ensemble_v2",
+            "format": "hybrid_rate_ensemble_v3",
             "name": self.name,
             "version": self.version,
             "fitted": self.fitted,
@@ -182,7 +200,10 @@ class HybridRateEnsembleModel:
         raw_bytes = file_path.read_bytes()
         try:
             payload = json.loads(raw_bytes.decode("utf-8"))
-            model = cls(fitted=bool(payload.get("fitted", False)))
+            model = cls(
+                fitted=bool(payload.get("fitted", False)),
+                training_summary=TrainingSummary(**payload.get("training_summary", {})),
+            )
             model.version = str(payload.get("version", cls.version))
             return model
         except Exception:
@@ -214,7 +235,22 @@ class HybridRateEnsembleModel:
             "acceptance_policy": dict(self.training_summary.acceptance_policy),
             "blend_mode": self.training_summary.blend_mode,
             "interval_source": self.training_summary.interval_source,
+            "coverage_score": self.training_summary.coverage_score,
+            "training_regime": self.training_summary.training_regime,
         }
+
+    def _candidate_predictions(self, features: DegradationFeatureVector) -> list[float]:
+        if not self.candidate_models:
+            return []
+
+        feature_row = degradation_feature_to_list(features)
+        candidate_predictions = []
+        for candidate in self.candidate_models:
+            try:
+                candidate_predictions.append(candidate.predict_rate_factor(feature_row))
+            except Exception:
+                continue
+        return candidate_predictions
 
     def _heuristic_rate_factor(self, features: DegradationFeatureVector) -> float:
         severity_bias = {

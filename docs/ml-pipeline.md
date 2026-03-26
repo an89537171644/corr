@@ -41,8 +41,10 @@ The runtime now reports one of the following execution modes:
 
 - `heuristic`
   deterministic legacy correction anchored to explicit engineering features
-- `trained`
-  candidate tabular models are fitted and blended with the heuristic anchor
+- `trained_single`
+  one accepted candidate model is blended with the heuristic anchor
+- `trained_ensemble`
+  several accepted candidate models are blended with the heuristic anchor
 - `fallback`
   the interface remains active, but external candidate backends are unavailable or no accepted rows were fitted
 
@@ -105,11 +107,15 @@ The candidate registry now records for each candidate:
 
 The analysis response now emits `dataset_version`, `ml_model_version`, and top-level
 `ml_mode` so later training experiments remain traceable in API payloads and reports.
-Stage 3 also exports:
+Stage 4 also exports:
 
 - `ml_candidate_count`
 - `ml_blend_mode`
 - `ml_interval_source`
+- `ml_correction_factor`
+- `coverage_score`
+- `training_regime`
+- `ml_warning_flags`
 - candidate registry metadata for trained paths
 
 Demo reproducibility:

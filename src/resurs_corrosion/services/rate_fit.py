@@ -23,11 +23,14 @@ class RateFitResult:
     rate_confidence: float
     fit_mode: RateFitMode
     used_points_count: int
+    num_valid_points: int
     fit_sample_size: int
     effective_weight_sum: float
     fit_rmse: float
     fit_r2_like: float
+    fit_quality_score: float
     history_span_years: float
+    rate_guard_flags: List[str] = field(default_factory=list)
     warnings: List[str] = field(default_factory=list)
 
 
@@ -41,10 +44,12 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.0,
             fit_mode=RateFitMode.BASELINE_FALLBACK,
             used_points_count=0,
+            num_valid_points=0,
             fit_sample_size=0,
             effective_weight_sum=0.0,
             fit_rmse=0.0,
             fit_r2_like=0.0,
+            fit_quality_score=0.0,
             history_span_years=0.0,
             warnings=["История обследований отсутствует; использована baseline-модель."],
         )
@@ -60,10 +65,12 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.35,
             fit_mode=RateFitMode.SINGLE_OBSERVATION,
             used_points_count=1,
+            num_valid_points=1,
             fit_sample_size=1,
             effective_weight_sum=point_weight(point, point.age_years, 0.0),
             fit_rmse=0.0,
             fit_r2_like=1.0,
+            fit_quality_score=0.35,
             history_span_years=max(point.age_years, 0.0),
             warnings=["Скорость деградации оценена по одному обследованию."],
         )
@@ -74,6 +81,11 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
         delta_years = max(current.age_years - previous.age_years, 1e-6)
         rate = max(0.0, (current.observed_loss_mm - previous.observed_loss_mm) / delta_years)
         band = max(0.05 * max(baseline_rate_value, 1e-6), 0.18 * max(rate, 1e-6))
+        effective_weight_sum = point_weight(previous, current.age_years, delta_years) + point_weight(
+            current,
+            current.age_years,
+            delta_years,
+        )
         return RateFitResult(
             v_mean=rate,
             v_lower=max(0.0, rate - band),
@@ -81,10 +93,12 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.55,
             fit_mode=RateFitMode.TWO_POINT,
             used_points_count=2,
+            num_valid_points=2,
             fit_sample_size=2,
-            effective_weight_sum=point_weight(previous, current.age_years, delta_years) + point_weight(current, current.age_years, delta_years),
+            effective_weight_sum=effective_weight_sum,
             fit_rmse=0.0,
             fit_r2_like=1.0,
+            fit_quality_score=0.55,
             history_span_years=delta_years,
             warnings=["Скорость деградации оценена по двум последним обследованиям."],
         )
@@ -99,11 +113,14 @@ def robust_history_fit(points: Sequence[RateFitPoint], baseline_rate_value: floa
     latest_age = max(xs)
     base_weights = [point_weight(point, latest_age, span_years) for point in points]
     warnings: List[str] = []
+    guard_flags: List[str] = []
 
-    slope = robust_increment_slope(xs, ys, base_weights)
+    raw_slope = robust_increment_slope(xs, ys, base_weights)
+    slope = raw_slope
     intercept = weighted_median([y - (slope * x) for x, y in zip(xs, ys)], base_weights)
     residuals = [y - (intercept + (slope * x)) for x, y in zip(xs, ys)]
     scale = robust_scale(residuals)
+
     if scale > 0:
         robust_weights = [bisquare_weight(residual, scale) for residual in residuals]
         strong_suppression = any(weight < 0.5 for weight in robust_weights)
@@ -111,33 +128,55 @@ def robust_history_fit(points: Sequence[RateFitPoint], baseline_rate_value: floa
             warnings.append("При оценке скорости подавлены выбросы в истории обследований.")
         fit_weights = [base * robust for base, robust in zip(base_weights, robust_weights)]
         if sum(fit_weights) > 0:
-            if strong_suppression:
-                slope = robust_increment_slope(xs, ys, fit_weights)
-            else:
-                slope, _ = weighted_linear_fit(xs, ys, fit_weights)
+            slope = robust_increment_slope(xs, ys, fit_weights) if strong_suppression else weighted_linear_fit(xs, ys, fit_weights)[0]
             intercept = weighted_median([y - (slope * x) for x, y in zip(xs, ys)], fit_weights)
     else:
         fit_weights = list(base_weights)
 
     residuals = [y - (intercept + (slope * x)) for x, y in zip(xs, ys)]
-    slope = max(0.0, slope)
     if span_years <= 1e-6:
         fallback_rate = max(0.0, ys[-1] / max(xs[-1], 1e-6))
         warnings.append("Временной диапазон обследований недостаточен; использована упрощенная оценка скорости.")
+        guard_flags.append("weak_history_span")
         slope = fallback_rate
         span_years = 0.0
+
+    if any((ys[index + 1] - ys[index]) < 0 for index in range(len(ys) - 1)):
+        warnings.append("История наблюдений содержит локальное уменьшение потерь; результат требует инженерной интерпретации.")
+    if raw_slope < 0 or slope < 0:
+        guard_flags.append("negative_trend_clamped")
+        warnings.append("Отрицательный тренд деградации ограничен неотрицательным значением.")
+    slope = max(0.0, slope)
+
+    slope_cap = max(0.5, 4.0 * max(baseline_rate_value, 1e-6))
+    if slope > slope_cap:
+        slope = slope_cap
+        guard_flags.append("high_rate_clamped")
+        warnings.append("Нереалистично высокая скорость деградации ограничена инженерным guardrail.")
 
     slope_std = estimate_slope_std(xs, residuals, fit_weights)
     band = max(1.96 * slope_std, 0.08 * max(slope, 1e-6), 0.04 * max(baseline_rate_value, 1e-6))
     confidence = robust_fit_confidence(points, residuals, span_years)
     rmse = math.sqrt(sum(weight * (residual**2) for weight, residual in zip(fit_weights, residuals)) / max(sum(fit_weights), 1e-9))
     r2_like = compute_weighted_r2_like(xs, ys, fit_weights, intercept, slope)
+    fit_quality_score = compute_fit_quality_score(
+        confidence=confidence,
+        r2_like=r2_like,
+        span_years=span_years,
+        point_count=len(points),
+        guard_count=len(set(guard_flags)),
+    )
+    num_valid_points = sum(1 for weight in fit_weights if weight >= 0.25)
+
     fit_mode = RateFitMode.ROBUST_HISTORY_FIT
-    if confidence < 0.55 or span_years < 2.0 or r2_like < 0.25:
+    if guard_flags:
+        fit_mode = RateFitMode.HISTORY_FIT_WITH_TREND_GUARD
+    elif confidence < 0.55 or span_years < 2.0 or r2_like < 0.25:
         fit_mode = RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE
         warnings.append("Робастная аппроксимация истории выполнена в режиме пониженной достоверности.")
-    if slope <= 1e-9 and any((ys[index + 1] - ys[index]) < 0 for index in range(len(ys) - 1)):
-        warnings.append("История наблюдений содержит локальное уменьшение потерь; прогнозная скорость ограничена неотрицательным значением.")
+
+    if fit_mode == RateFitMode.HISTORY_FIT_WITH_TREND_GUARD and fit_quality_score < 0.55:
+        warnings.append("История деградации обработана с trend guard; результат следует трактовать как low confidence.")
 
     return RateFitResult(
         v_mean=slope,
@@ -146,13 +185,31 @@ def robust_history_fit(points: Sequence[RateFitPoint], baseline_rate_value: floa
         rate_confidence=confidence,
         fit_mode=fit_mode,
         used_points_count=len(points),
+        num_valid_points=num_valid_points,
         fit_sample_size=len(points),
         effective_weight_sum=sum(fit_weights),
         fit_rmse=rmse,
         fit_r2_like=r2_like,
+        fit_quality_score=fit_quality_score,
         history_span_years=span_years,
+        rate_guard_flags=sorted(set(guard_flags)),
         warnings=warnings,
     )
+
+
+def compute_fit_quality_score(
+    *,
+    confidence: float,
+    r2_like: float,
+    span_years: float,
+    point_count: int,
+    guard_count: int,
+) -> float:
+    span_factor = min(1.0, span_years / 8.0)
+    point_factor = min(1.0, point_count / 5.0)
+    guard_penalty = min(0.35, 0.08 * guard_count)
+    score = (0.45 * confidence) + (0.20 * r2_like) + (0.20 * span_factor) + (0.15 * point_factor) - guard_penalty
+    return max(0.0, min(1.0, score))
 
 
 def point_weight(point: RateFitPoint, latest_age: float, span_years: float) -> float:
@@ -200,7 +257,7 @@ def robust_pairwise_slope(xs: Sequence[float], ys: Sequence[float], weights: Seq
 
     if not slopes:
         return 0.0
-    return max(0.0, weighted_median(slopes, slope_weights))
+    return weighted_median(slopes, slope_weights)
 
 
 def robust_increment_slope(xs: Sequence[float], ys: Sequence[float], weights: Sequence[float]) -> float:
@@ -215,7 +272,7 @@ def robust_increment_slope(xs: Sequence[float], ys: Sequence[float], weights: Se
 
     if not slopes:
         return robust_pairwise_slope(xs, ys, weights)
-    return max(0.0, weighted_median(slopes, slope_weights))
+    return weighted_median(slopes, slope_weights)
 
 
 def weighted_median(values: Sequence[float], weights: Sequence[float]) -> float:

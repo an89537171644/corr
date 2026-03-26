@@ -3,7 +3,7 @@
   "forecast_mode": "hybrid",
   "engineering_confidence_level": "A",
   "resistance_mode": "direct",
-  "reducer_mode": "direct",
+  "reducer_mode": "verified_reducer",
   "rate_fit_mode": "two_point",
   "risk_mode": "engineering_uncertainty_band",
   "uncertainty_level": "high",

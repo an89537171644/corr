@@ -7,9 +7,12 @@ from typing import Callable, List, Optional, Tuple
 from ..domain import (
     ActionInput,
     AxialForceKind,
+    CapacityComponents,
     CheckType,
+    EngineeringCapacityMode,
     EngineeringConfidenceLevel,
     MaterialInput,
+    NormativeCompletenessLevel,
     ResistanceMode,
     SectionProperties,
     TimelinePoint,
@@ -22,6 +25,13 @@ class ResistanceCheck:
     unit: str
     resistance_mode: ResistanceMode
     engineering_confidence_level: EngineeringConfidenceLevel
+    engineering_capacity_mode: EngineeringCapacityMode
+    normative_completeness_level: NormativeCompletenessLevel
+    capacity_components: CapacityComponents = field(default_factory=CapacityComponents)
+    interaction_ratio: Optional[float] = None
+    interaction_mode: Optional[str] = None
+    combined_check_level: Optional[str] = None
+    combined_check_warning: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
 
 
@@ -34,6 +44,13 @@ class CapacityAssessment:
     margin_value: float
     resistance_mode: ResistanceMode
     engineering_confidence_level: EngineeringConfidenceLevel
+    engineering_capacity_mode: EngineeringCapacityMode
+    normative_completeness_level: NormativeCompletenessLevel
+    capacity_components: CapacityComponents = field(default_factory=CapacityComponents)
+    interaction_ratio: Optional[float] = None
+    interaction_mode: Optional[str] = None
+    combined_check_level: Optional[str] = None
+    combined_check_warning: Optional[str] = None
     warnings: List[str] = field(default_factory=list)
     utilization_ratio: Optional[float] = None
 
@@ -49,6 +66,21 @@ class CrossingResult:
     warnings: List[str] = field(default_factory=list)
 
 
+def build_capacity_components(
+    *,
+    tension: Optional[float] = None,
+    compression: Optional[float] = None,
+    bending_major: Optional[float] = None,
+    interaction: Optional[float] = None,
+) -> CapacityComponents:
+    return CapacityComponents(
+        tension=tension,
+        compression=compression,
+        bending_major=bending_major,
+        interaction=interaction,
+    )
+
+
 def check_axial_tension(section: SectionProperties, material: MaterialInput) -> ResistanceCheck:
     resistance = (section.area_mm2 * material.fy_mpa) / (material.gamma_m * 1000.0)
     return ResistanceCheck(
@@ -56,6 +88,9 @@ def check_axial_tension(section: SectionProperties, material: MaterialInput) -> 
         unit="kN",
         resistance_mode=ResistanceMode.DIRECT,
         engineering_confidence_level=EngineeringConfidenceLevel.A,
+        engineering_capacity_mode=EngineeringCapacityMode.ENGINEERING_BASIC,
+        normative_completeness_level=NormativeCompletenessLevel.PARTIAL_ENGINEERING,
+        capacity_components=build_capacity_components(tension=resistance),
     )
 
 
@@ -66,6 +101,9 @@ def check_axial_compression_basic(section: SectionProperties, material: Material
         unit="kN",
         resistance_mode=ResistanceMode.APPROXIMATE,
         engineering_confidence_level=EngineeringConfidenceLevel.B,
+        engineering_capacity_mode=EngineeringCapacityMode.ENGINEERING_BASIC,
+        normative_completeness_level=NormativeCompletenessLevel.PARTIAL_ENGINEERING,
+        capacity_components=build_capacity_components(compression=resistance),
         warnings=["Использована укрупненная проверка сжатия через коэффициент устойчивости."],
     )
 
@@ -77,6 +115,9 @@ def check_bending_major_basic(section: SectionProperties, material: MaterialInpu
         unit="kN*m",
         resistance_mode=ResistanceMode.DIRECT,
         engineering_confidence_level=EngineeringConfidenceLevel.A,
+        engineering_capacity_mode=EngineeringCapacityMode.ENGINEERING_BASIC,
+        normative_completeness_level=NormativeCompletenessLevel.PARTIAL_ENGINEERING,
+        capacity_components=build_capacity_components(bending_major=resistance),
     )
 
 
@@ -93,6 +134,9 @@ def check_axial_compression_enhanced(section: SectionProperties, material: Mater
             unit=basic.unit,
             resistance_mode=ResistanceMode.APPROXIMATE,
             engineering_confidence_level=EngineeringConfidenceLevel.C,
+            engineering_capacity_mode=EngineeringCapacityMode.FALLBACK_ESTIMATE,
+            normative_completeness_level=NormativeCompletenessLevel.NOT_NORMATIVE,
+            capacity_components=build_capacity_components(compression=basic.resistance_value),
             warnings=warnings,
         )
 
@@ -103,7 +147,9 @@ def check_axial_compression_enhanced(section: SectionProperties, material: Mater
         warnings.append("Для enhanced compression принят effective_length_factor=1.0 по умолчанию.")
     if not action.support_condition:
         confidence = EngineeringConfidenceLevel.C
-        warnings.append("Условия закрепления не заданы явно; slenderness-поправка носит инженерно-аппроксимированный характер.")
+        warnings.append(
+            "Условия закрепления не заданы явно; slenderness-поправка носит инженерно-аппроксимированный характер."
+        )
 
     slenderness = (effective_length_factor * action.effective_length_mm) / max(radius_of_gyration, 1e-9)
     elastic_modulus_mpa = 210_000.0
@@ -111,13 +157,29 @@ def check_axial_compression_enhanced(section: SectionProperties, material: Mater
     chi = 1.0 / max(1.0 + (lambda_bar**2), 1e-9)
     chi = max(0.15, min(1.0, min(chi, material.stability_factor)))
     resistance = (chi * section.area_mm2 * material.fy_mpa) / (material.gamma_m * 1000.0)
-    warnings.append("Enhanced compression использует инженерную slenderness-редукцию и не является полным нормативным расчетом по СП 16.")
+    warnings.append(
+        "Enhanced compression использует инженерную slenderness-редукцию и не является полным нормативным расчетом по СП 16."
+    )
+
+    engineering_capacity_mode = (
+        EngineeringCapacityMode.ENGINEERING_PLUS
+        if confidence in {EngineeringConfidenceLevel.A, EngineeringConfidenceLevel.B}
+        else EngineeringCapacityMode.FALLBACK_ESTIMATE
+    )
+    normative_completeness_level = (
+        NormativeCompletenessLevel.EXTENDED_ENGINEERING
+        if engineering_capacity_mode == EngineeringCapacityMode.ENGINEERING_PLUS
+        else NormativeCompletenessLevel.NOT_NORMATIVE
+    )
 
     return ResistanceCheck(
         resistance_value=resistance,
         unit="kN",
         resistance_mode=ResistanceMode.COMPRESSION_ENHANCED,
         engineering_confidence_level=confidence,
+        engineering_capacity_mode=engineering_capacity_mode,
+        normative_completeness_level=normative_completeness_level,
+        capacity_components=build_capacity_components(compression=resistance),
         warnings=warnings,
     )
 
@@ -143,7 +205,14 @@ def check_combined_axial_bending_basic(
     moment_ratio = moment_value / max(bending_check.resistance_value, 1e-9)
     interaction_ratio = axial_ratio + moment_ratio
     warnings = list(axial_check.warnings)
-    warnings.append("Использована приближенная комбинированная проверка N/Nrd + M/Mrd <= 1.0.")
+    combined_warning = "Использована приближенная комбинированная проверка N/Nrd + M/Mrd <= 1.0."
+    warnings.append(combined_warning)
+    capacity_components = build_capacity_components(
+        tension=axial_check.resistance_value if action.axial_force_kind == AxialForceKind.TENSION else None,
+        compression=axial_check.resistance_value if action.axial_force_kind == AxialForceKind.COMPRESSION else None,
+        bending_major=bending_check.resistance_value,
+        interaction=interaction_ratio,
+    )
 
     return CapacityAssessment(
         resistance_value=1.0,
@@ -153,6 +222,13 @@ def check_combined_axial_bending_basic(
         margin_value=1.0 - interaction_ratio,
         resistance_mode=ResistanceMode.COMBINED_BASIC,
         engineering_confidence_level=EngineeringConfidenceLevel.B,
+        engineering_capacity_mode=EngineeringCapacityMode.ENGINEERING_BASIC,
+        normative_completeness_level=NormativeCompletenessLevel.PARTIAL_ENGINEERING,
+        capacity_components=capacity_components,
+        interaction_ratio=interaction_ratio,
+        interaction_mode="linear_sum_basic",
+        combined_check_level="basic_interaction",
+        combined_check_warning=combined_warning,
         warnings=warnings,
         utilization_ratio=interaction_ratio,
     )
@@ -171,7 +247,9 @@ def check_combined_axial_bending_enhanced(
     if action.axial_force_kind == AxialForceKind.TENSION:
         axial_check = check_axial_tension(section, material)
         second_order_factor = action.moment_amplification_factor or 1.0
-        warnings = ["Enhanced combined path для растяжения использует прямое осевое сопротивление и инженерную проверку изгиба."]
+        warnings = [
+            "Enhanced combined path для растяжения использует прямое осевое сопротивление и инженерную проверку изгиба."
+        ]
         confidence = EngineeringConfidenceLevel.B
     else:
         axial_check = check_axial_compression_enhanced(section, material, action)
@@ -191,7 +269,26 @@ def check_combined_axial_bending_enhanced(
     axial_ratio = axial_value / max(axial_check.resistance_value, 1e-9)
     moment_ratio = amplified_moment / max(bending_check.resistance_value, 1e-9)
     interaction_ratio = (0.85 * axial_ratio) + moment_ratio
-    warnings.append("Enhanced combined проверка является инженерно-аппроксимированной и не должна трактоваться как полный SP16 engine.")
+    combined_warning = (
+        "Enhanced combined проверка является инженерно-аппроксимированной и не должна трактоваться как полный SP16 engine."
+    )
+    warnings.append(combined_warning)
+    engineering_capacity_mode = (
+        EngineeringCapacityMode.ENGINEERING_PLUS
+        if confidence in {EngineeringConfidenceLevel.A, EngineeringConfidenceLevel.B}
+        else EngineeringCapacityMode.FALLBACK_ESTIMATE
+    )
+    normative_completeness_level = (
+        NormativeCompletenessLevel.EXTENDED_ENGINEERING
+        if engineering_capacity_mode == EngineeringCapacityMode.ENGINEERING_PLUS
+        else NormativeCompletenessLevel.NOT_NORMATIVE
+    )
+    capacity_components = build_capacity_components(
+        tension=axial_check.resistance_value if action.axial_force_kind == AxialForceKind.TENSION else None,
+        compression=axial_check.resistance_value if action.axial_force_kind == AxialForceKind.COMPRESSION else None,
+        bending_major=bending_check.resistance_value,
+        interaction=interaction_ratio,
+    )
 
     return CapacityAssessment(
         resistance_value=1.0,
@@ -201,6 +298,17 @@ def check_combined_axial_bending_enhanced(
         margin_value=1.0 - interaction_ratio,
         resistance_mode=ResistanceMode.COMBINED_ENHANCED,
         engineering_confidence_level=confidence,
+        engineering_capacity_mode=engineering_capacity_mode,
+        normative_completeness_level=normative_completeness_level,
+        capacity_components=capacity_components,
+        interaction_ratio=interaction_ratio,
+        interaction_mode="interaction_with_second_order",
+        combined_check_level=(
+            "enhanced_interaction"
+            if engineering_capacity_mode == EngineeringCapacityMode.ENGINEERING_PLUS
+            else "fallback_interaction"
+        ),
+        combined_check_warning=combined_warning,
         warnings=warnings,
         utilization_ratio=interaction_ratio,
     )
@@ -268,6 +376,13 @@ def evaluate_margin(
         margin_value=resistance_check.resistance_value - demand_value,
         resistance_mode=resistance_check.resistance_mode,
         engineering_confidence_level=resistance_check.engineering_confidence_level,
+        engineering_capacity_mode=resistance_check.engineering_capacity_mode,
+        normative_completeness_level=resistance_check.normative_completeness_level,
+        capacity_components=resistance_check.capacity_components,
+        interaction_ratio=resistance_check.interaction_ratio,
+        interaction_mode=resistance_check.interaction_mode,
+        combined_check_level=resistance_check.combined_check_level,
+        combined_check_warning=resistance_check.combined_check_warning,
         warnings=list(resistance_check.warnings),
     )
 
@@ -329,7 +444,9 @@ def find_limit_state_crossing_details(
         1 for previous, current in zip(timeline, timeline[1:]) if current.margin_value > previous.margin_value + 1e-6
     )
     if positive_deltas:
-        warnings.append("Кривая запаса несущей способности не является строго монотонной; conservative life следует интерпретировать с запасом.")
+        warnings.append(
+            "Кривая запаса несущей способности не является строго монотонной; conservative life следует интерпретировать с запасом."
+        )
 
     for previous, current in zip(timeline, timeline[1:]):
         if previous.margin_value > 0 and current.margin_value <= 0:

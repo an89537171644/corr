@@ -2,16 +2,19 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import List
+from typing import Iterable, List
 
 from ..domain import (
     CalculationRequest,
     CalculationResponse,
     CalculationScenarioInput,
     DatasetVersionInfo,
+    EngineeringCapacityMode,
     EngineeringConfidenceLevel,
+    LifeEstimateBundle,
     LifeIntervalYears,
     MLModelVersionInfo,
+    NormativeCompletenessLevel,
     RateFitMode,
     RefinementDiagnostics,
     ReducerMode,
@@ -22,6 +25,7 @@ from ..domain import (
     TimelinePoint,
     UncertaintyLevel,
     UncertaintyTrajectories,
+    ZoneObservation,
 )
 from ..ml import build_default_hybrid_model
 from ..scenarios import default_scenario_library, get_environment_profile
@@ -49,13 +53,18 @@ def run_calculation(request: CalculationRequest) -> CalculationResponse:
 
     results = [run_scenario(request, environment, scenario, zone_observations) for scenario in scenarios]
     risk_profile = summarize_risk_stage3(results)
+    validation_warnings = collect_validation_warnings(request)
+    normalization_mode = determine_normalization_mode(validation_warnings)
     warnings = collect_response_warnings(zone_observations, results)
+    warnings.extend(validation_warnings)
     fallback_flags = collect_fallback_flags(zone_observations, results)
     life_interval = build_response_life_interval(results)
+    life_estimate_bundle = build_response_life_estimate_bundle(results)
     uncertainty_warnings = collect_uncertainty_warnings(zone_observations, results)
     uncertainty_basis = collect_uncertainty_basis(results)
     dominant_result = select_governing_result(results)
     uncertainty_source = determine_uncertainty_source(zone_observations)
+    ml_metadata = aggregate_ml_metadata(zone_observations)
 
     return CalculationResponse(
         environment_category=request.environment_category,
@@ -69,11 +78,18 @@ def run_calculation(request: CalculationRequest) -> CalculationResponse:
         engineering_confidence_level=combine_confidence_levels(
             [result.engineering_confidence_level for result in results]
         ),
+        engineering_capacity_mode=combine_engineering_capacity_modes(
+            [result.engineering_capacity_mode for result in results]
+        ),
+        normative_completeness_level=combine_normative_completeness_levels(
+            [result.normative_completeness_level for result in results]
+        ),
         resistance_mode=combine_resistance_modes([result.resistance_mode for result in results]),
         reducer_mode=combine_reducer_modes([result.reducer_mode for result in results]),
         rate_fit_mode=combine_rate_fit_modes([observation.rate_fit_mode for observation in zone_observations]),
         risk_mode=RiskMode.ENGINEERING_UNCERTAINTY_BAND if request.inspections else RiskMode.SCENARIO_RISK,
         life_interval_years=life_interval,
+        life_estimate_bundle=life_estimate_bundle,
         uncertainty_level=combine_uncertainty_levels([result.uncertainty_level for result in results]),
         uncertainty_source=uncertainty_source,
         uncertainty_basis=uncertainty_basis,
@@ -86,10 +102,16 @@ def run_calculation(request: CalculationRequest) -> CalculationResponse:
             dominant_result.uncertainty_trajectories if dominant_result is not None else UncertaintyTrajectories()
         ),
         ml_mode=str(ml_model_info.get("execution_mode", "heuristic")),
+        ml_correction_factor=ml_metadata["ml_correction_factor"],
+        coverage_score=ml_metadata["coverage_score"],
+        training_regime=ml_metadata["training_regime"],
+        ml_warning_flags=ml_metadata["ml_warning_flags"],
         ml_candidate_count=int(ml_model_info.get("candidate_count", 0) or 0),
         ml_blend_mode=str(ml_model_info.get("blend_mode", "heuristic_only")),
         ml_interval_source=str(ml_model_info.get("interval_source", "heuristic_band")),
-        warnings=warnings,
+        validation_warnings=validation_warnings,
+        normalization_mode=normalization_mode,
+        warnings=sorted(set(warnings)),
         used_measurement_count=sum(len(inspection.measurements) for inspection in request.inspections),
         used_inspection_count=len(request.inspections),
         fallback_flags=fallback_flags,
@@ -100,7 +122,7 @@ def run_scenario(
     request: CalculationRequest,
     environment: dict,
     scenario: CalculationScenarioInput,
-    zone_observations: list,
+    zone_observations: list[ZoneObservation],
 ) -> ScenarioResult:
     k_mm = environment["k_mm"]
     b_value = environment["b"]
@@ -190,34 +212,26 @@ def run_scenario(
         margin_at_age=lambda age_years: evaluate_at_age(age_years, rate_variant="optimistic")[2].margin_value,
     )
     remaining_life = nominal_crossing.remaining_life_years
-    conservative_candidates = [
-        value
-        for value in (remaining_life, conservative_crossing.remaining_life_years)
-        if value is not None
-    ]
+    conservative_candidates = [value for value in (remaining_life, conservative_crossing.remaining_life_years) if value is not None]
     conservative_life = min(conservative_candidates) if conservative_candidates else None
-    upper_candidates = [
-        value
-        for value in (remaining_life, upper_crossing.remaining_life_years)
-        if value is not None
-    ]
+    upper_candidates = [value for value in (remaining_life, upper_crossing.remaining_life_years) if value is not None]
     upper_life = max(upper_candidates) if upper_candidates else None
-    if conservative_life is None:
-        limit_reached = remaining_life is not None and remaining_life <= request.forecast_horizon_years
-    else:
-        limit_reached = conservative_life <= request.forecast_horizon_years
+    limit_reached = (
+        remaining_life is not None and remaining_life <= request.forecast_horizon_years
+        if conservative_life is None
+        else conservative_life <= request.forecast_horizon_years
+    )
     warnings = list(current_section_assessment.warnings) + list(current_assessment.warnings)
     warnings.extend(nominal_crossing.warnings)
     warnings.extend(conservative_crossing.warnings)
     warnings.extend(upper_crossing.warnings)
     fallback_flags = list(current_section_assessment.fallback_flags)
+    if current_assessment.engineering_capacity_mode == EngineeringCapacityMode.FALLBACK_ESTIMATE:
+        fallback_flags.append(f"capacity_mode:{current_assessment.engineering_capacity_mode.value}")
     if current_assessment.resistance_mode != ResistanceMode.DIRECT:
         fallback_flags.append(f"resistance_mode:{current_assessment.resistance_mode.value}")
     engineering_confidence = combine_confidence_levels(
-        [
-            current_section_assessment.engineering_confidence_level,
-            current_assessment.engineering_confidence_level,
-        ]
+        [current_section_assessment.engineering_confidence_level, current_assessment.engineering_confidence_level]
     )
     uncertainty_source = determine_uncertainty_source(zone_observations)
     uncertainty_basis = build_scenario_uncertainty_basis(
@@ -228,15 +242,13 @@ def run_scenario(
         conservative_life=conservative_life,
         upper_life=upper_life,
     )
-    uncertainty_warnings = []
-    if conservative_life is not None and remaining_life is not None and conservative_life < remaining_life:
-        uncertainty_warnings.append("Консервативный ресурс меньше номинального из-за верхней границы прогнозной скорости деградации.")
-    if upper_life is not None and remaining_life is not None and upper_life > remaining_life:
-        uncertainty_warnings.append("Верхняя траектория использует нижнюю границу скорости деградации и дает более долгий ориентир по ресурсу.")
-    if any(state.forecast_source == "baseline_fallback" for state in current_zone_states):
-        uncertainty_warnings.append("Часть зон продолжена по baseline fallback; uncertainty band ограничен качеством истории обследований.")
-    if nominal_crossing.status in {"near_flat_no_crossing", "numerically_uncertain_crossing"}:
-        uncertainty_warnings.append("Поиск предельного состояния имеет пониженную численную определенность; ориентируйтесь на интервал ресурса, а не на одну точку.")
+    uncertainty_warnings = build_scenario_uncertainty_warnings(
+        current_zone_states=current_zone_states,
+        nominal_crossing=nominal_crossing,
+        remaining_life=remaining_life,
+        conservative_life=conservative_life,
+        upper_life=upper_life,
+    )
     refinement_diagnostics = build_refinement_diagnostics(nominal_crossing)
     uncertainty_level = determine_uncertainty_level(
         zone_observations=zone_observations,
@@ -244,6 +256,13 @@ def run_scenario(
         conservative_life=conservative_life,
         upper_life=upper_life,
         crossing_diagnostics=[nominal_crossing, conservative_crossing, upper_crossing],
+    )
+    life_estimate_bundle = build_life_estimate_bundle(
+        lower=conservative_life,
+        base=remaining_life,
+        upper=upper_life,
+        sources=uncertainty_basis,
+        mode="scenario_uncertainty_band",
     )
 
     return ScenarioResult(
@@ -271,8 +290,15 @@ def run_scenario(
         crossing_bracket_width_years=nominal_crossing.bracket_width_years,
         crossing_refinement_iterations=nominal_crossing.refinement_iterations,
         engineering_confidence_level=engineering_confidence,
+        engineering_capacity_mode=current_assessment.engineering_capacity_mode,
+        normative_completeness_level=current_assessment.normative_completeness_level,
         resistance_mode=current_assessment.resistance_mode,
         reducer_mode=current_section_assessment.reducer_mode,
+        capacity_components=current_assessment.capacity_components,
+        interaction_ratio=current_assessment.interaction_ratio,
+        interaction_mode=current_assessment.interaction_mode,
+        combined_check_level=current_assessment.combined_check_level,
+        combined_check_warning=current_assessment.combined_check_warning,
         uncertainty_level=uncertainty_level,
         uncertainty_source=uncertainty_source,
         uncertainty_trajectories=UncertaintyTrajectories(
@@ -280,6 +306,7 @@ def run_scenario(
             conservative=conservative_timeline,
             upper=upper_timeline,
         ),
+        life_estimate_bundle=life_estimate_bundle,
         refinement_diagnostics=refinement_diagnostics,
         uncertainty_basis=uncertainty_basis,
         uncertainty_warnings=sorted(set(uncertainty_warnings)),
@@ -290,42 +317,7 @@ def run_scenario(
 
 
 def summarize_risk(results: List[ScenarioResult]) -> RiskProfile:
-    scenario_count = len(results)
-    critical = sum(1 for result in results if result.limit_state_reached_within_horizon)
-    exceedance_share = (critical / scenario_count) if scenario_count else 0.0
-
-    if any(result.margin_value <= 0 for result in results):
-        recommended_action = "Требуется немедленная проверка усиления или замены элемента"
-        next_inspection = 0.0
-    else:
-        finite_lives = [
-            result.remaining_life_conservative_years
-            for result in results
-            if result.remaining_life_conservative_years is not None
-        ]
-        min_life = min(finite_lives) if finite_lives else None
-
-        if exceedance_share >= 0.6 or (min_life is not None and min_life <= 1.0):
-            recommended_action = "Необходим ремонт защитной системы и повторная оценка несущей способности"
-            next_inspection = 0.5
-        elif exceedance_share >= 0.2 or (min_life is not None and min_life <= 3.0):
-            recommended_action = "Следует назначить корректирующее обслуживание и учащенный мониторинг"
-            next_inspection = 1.0
-        else:
-            recommended_action = "Допускается продолжение эксплуатации при плановом мониторинге"
-            next_inspection = 3.0
-
-    return RiskProfile(
-        scenario_count=scenario_count,
-        critical_scenarios=critical,
-        exceedance_share=exceedance_share,
-        recommended_action=recommended_action,
-        next_inspection_within_years=next_inspection,
-        method_note=(
-            "Используется сценарный детерминированный индикатор риска. Доля превышений не является "
-            "формальной вероятностью отказа и на следующем этапе должна быть заменена калиброванной моделью надежности."
-        ),
-    )
+    return summarize_risk_stage3(results)
 
 
 def summarize_risk_stage3(results: List[ScenarioResult]) -> RiskProfile:
@@ -354,29 +346,13 @@ def summarize_risk_stage3(results: List[ScenarioResult]) -> RiskProfile:
             recommended_action = "Допускается продолжение эксплуатации при плановом мониторинге"
             next_inspection = 3.0
 
-    conservative_lives = [
-        result.remaining_life_conservative_years
-        for result in results
-        if result.remaining_life_conservative_years is not None
-    ]
-    upper_lives = [
-        result.life_interval_years.upper_years
-        for result in results
-        if result.life_interval_years.upper_years is not None
-    ]
-    if conservative_lives and upper_lives:
-        method_note = (
-            "Используется engineering uncertainty band: сценарный индикатор дополнен консервативной оценкой "
-            "остаточного ресурса по верхней границе скорости деградации. Интервал "
-            f"[{min(conservative_lives):.2f}; {min(upper_lives):.2f}] лет не является формальной "
-            "вероятностной надежностью и требует дальнейшей калибровки на натурных данных."
-        )
-    else:
-        method_note = (
-            "Используется сценарный детерминированный индикатор риска. Доля превышений не является "
-            "формальной вероятностью отказа и на следующем этапе должна быть заменена калиброванной моделью надежности."
-        )
-
+    conservative_lives = [result.remaining_life_conservative_years for result in results if result.remaining_life_conservative_years is not None]
+    upper_lives = [result.life_interval_years.upper_years for result in results if result.life_interval_years.upper_years is not None]
+    method_note = (
+        "Используется engineering uncertainty band: сценарный индикатор дополнен консервативной оценкой остаточного ресурса."
+        if conservative_lives and upper_lives
+        else "Используется сценарный детерминированный индикатор риска."
+    )
     return RiskProfile(
         scenario_count=scenario_count,
         critical_scenarios=critical,
@@ -407,7 +383,7 @@ def build_dataset_version(request: CalculationRequest) -> DatasetVersionInfo:
         data_hash=hash_request_baseline(request),
         accepted_row_count=len(request.zones),
         rejected_row_count=0,
-        notes="История обследований отсутствует, поэтому расчет опирается на классическую базовую атмосферную модель коррозии.",
+        notes="История обследований отсутствует, поэтому расчет опирается на базовую атмосферную модель коррозии.",
     )
 
 
@@ -433,7 +409,25 @@ def combine_resistance_modes(modes: List[ResistanceMode]) -> ResistanceMode:
     return ResistanceMode.DIRECT
 
 
+def combine_engineering_capacity_modes(modes: List[EngineeringCapacityMode]) -> EngineeringCapacityMode:
+    if any(mode == EngineeringCapacityMode.FALLBACK_ESTIMATE for mode in modes):
+        return EngineeringCapacityMode.FALLBACK_ESTIMATE
+    if any(mode == EngineeringCapacityMode.ENGINEERING_PLUS for mode in modes):
+        return EngineeringCapacityMode.ENGINEERING_PLUS
+    return EngineeringCapacityMode.ENGINEERING_BASIC
+
+
+def combine_normative_completeness_levels(levels: List[NormativeCompletenessLevel]) -> NormativeCompletenessLevel:
+    if any(level == NormativeCompletenessLevel.NOT_NORMATIVE for level in levels):
+        return NormativeCompletenessLevel.NOT_NORMATIVE
+    if any(level == NormativeCompletenessLevel.PARTIAL_ENGINEERING for level in levels):
+        return NormativeCompletenessLevel.PARTIAL_ENGINEERING
+    return NormativeCompletenessLevel.EXTENDED_ENGINEERING
+
+
 def combine_rate_fit_modes(modes: List[RateFitMode]) -> RateFitMode:
+    if any(mode == RateFitMode.HISTORY_FIT_WITH_TREND_GUARD for mode in modes):
+        return RateFitMode.HISTORY_FIT_WITH_TREND_GUARD
     if any(mode == RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE for mode in modes):
         return RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE
     if any(mode == RateFitMode.ROBUST_HISTORY_FIT for mode in modes):
@@ -446,8 +440,12 @@ def combine_rate_fit_modes(modes: List[RateFitMode]) -> RateFitMode:
 
 
 def combine_reducer_modes(modes: List[ReducerMode]) -> ReducerMode:
-    if any(mode == ReducerMode.GENERIC_FALLBACK for mode in modes):
-        return ReducerMode.GENERIC_FALLBACK
+    if any(mode in {ReducerMode.FALLBACK_REDUCER, ReducerMode.GENERIC_FALLBACK} for mode in modes):
+        return ReducerMode.FALLBACK_REDUCER
+    if any(mode == ReducerMode.ENGINEERING_REDUCER for mode in modes):
+        return ReducerMode.ENGINEERING_REDUCER
+    if any(mode == ReducerMode.VERIFIED_REDUCER for mode in modes):
+        return ReducerMode.VERIFIED_REDUCER
     return ReducerMode.DIRECT
 
 
@@ -461,7 +459,7 @@ def combine_uncertainty_levels(levels: List[UncertaintyLevel]) -> UncertaintyLev
     return max(levels or [UncertaintyLevel.HIGH], key=lambda item: order[item])
 
 
-def collect_response_warnings(zone_observations: list, results: List[ScenarioResult]) -> List[str]:
+def collect_response_warnings(zone_observations: list[ZoneObservation], results: List[ScenarioResult]) -> List[str]:
     warnings = []
     for observation in zone_observations:
         warnings.extend(observation.warnings)
@@ -470,11 +468,13 @@ def collect_response_warnings(zone_observations: list, results: List[ScenarioRes
     return sorted(set(warnings))
 
 
-def collect_fallback_flags(zone_observations: list, results: List[ScenarioResult]) -> List[str]:
+def collect_fallback_flags(zone_observations: list[ZoneObservation], results: List[ScenarioResult]) -> List[str]:
     flags = []
     for observation in zone_observations:
         if observation.source in {"baseline", "baseline_fallback"}:
             flags.append(f"forecast_source:{observation.zone_id}:baseline")
+        if observation.rate_guard_flags:
+            flags.append(f"rate_fit_guard:{observation.zone_id}")
     for result in results:
         flags.extend(result.fallback_flags)
     return sorted(set(flags))
@@ -495,6 +495,40 @@ def build_response_life_interval(results: List[ScenarioResult]) -> LifeIntervalY
     )
 
 
+def build_response_life_estimate_bundle(results: List[ScenarioResult]) -> LifeEstimateBundle:
+    nominal = [result.remaining_life_nominal_years for result in results if result.remaining_life_nominal_years is not None]
+    conservative = [result.remaining_life_conservative_years for result in results if result.remaining_life_conservative_years is not None]
+    upper = [result.life_interval_years.upper_years for result in results if result.life_interval_years.upper_years is not None]
+    return build_life_estimate_bundle(
+        lower=min(conservative) if conservative else (min(nominal) if nominal else None),
+        base=min(nominal) if nominal else None,
+        upper=min(upper) if upper else (min(nominal) if nominal else None),
+        sources=collect_uncertainty_basis(results),
+        mode="response_uncertainty_band",
+    )
+
+
+def build_life_estimate_bundle(
+    *,
+    lower: float | None,
+    base: float | None,
+    upper: float | None,
+    sources: Iterable[str],
+    mode: str,
+) -> LifeEstimateBundle:
+    finite = [value for value in (lower, base, upper) if value is not None]
+    if not finite:
+        return LifeEstimateBundle(lower=None, base=None, upper=None, sources=sorted(set(sources)), mode=mode)
+
+    lower_value = lower if lower is not None else min(finite)
+    upper_value = upper if upper is not None else max(finite)
+    base_value = base if base is not None else max(lower_value, min(sum(finite) / len(finite), upper_value))
+    lower_value = min(lower_value, base_value, upper_value)
+    upper_value = max(lower_value, base_value, upper_value)
+    base_value = min(max(base_value, lower_value), upper_value)
+    return LifeEstimateBundle(lower=lower_value, base=base_value, upper=upper_value, sources=sorted(set(sources)), mode=mode)
+
+
 def collect_uncertainty_basis(results: List[ScenarioResult]) -> List[str]:
     basis: List[str] = []
     for result in results:
@@ -505,13 +539,14 @@ def collect_uncertainty_basis(results: List[ScenarioResult]) -> List[str]:
     return sorted(set(basis))
 
 
-def collect_uncertainty_warnings(zone_observations: list, results: List[ScenarioResult]) -> List[str]:
+def collect_uncertainty_warnings(zone_observations: list[ZoneObservation], results: List[ScenarioResult]) -> List[str]:
     warnings: List[str] = []
     for observation in zone_observations:
         if observation.rate_fit_mode in {
             RateFitMode.BASELINE_FALLBACK,
             RateFitMode.SINGLE_OBSERVATION,
             RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE,
+            RateFitMode.HISTORY_FIT_WITH_TREND_GUARD,
         }:
             warnings.append(f"Зона {observation.zone_id}: uncertainty band ограничен режимом {observation.rate_fit_mode.value}.")
     for result in results:
@@ -528,19 +563,17 @@ def select_governing_result(results: List[ScenarioResult]) -> ScenarioResult | N
     )
 
 
-def determine_uncertainty_source(zone_observations: list) -> str:
+def determine_uncertainty_source(zone_observations: list[ZoneObservation]) -> str:
     if not zone_observations or all((observation.measurement_count or 0) == 0 for observation in zone_observations):
         return "scenario_library_only"
-    if any(
-        observation.source == "baseline_fallback" or observation.rate_fit_mode == RateFitMode.BASELINE_FALLBACK
-        for observation in zone_observations
-    ):
+    if any(observation.source == "baseline_fallback" or observation.rate_fit_mode == RateFitMode.BASELINE_FALLBACK for observation in zone_observations):
         return "inspection_history_with_baseline_fallback"
     if any(
         observation.rate_fit_mode in {
             RateFitMode.SINGLE_OBSERVATION,
             RateFitMode.TWO_POINT,
             RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE,
+            RateFitMode.HISTORY_FIT_WITH_TREND_GUARD,
         }
         for observation in zone_observations
     ):
@@ -549,28 +582,29 @@ def determine_uncertainty_source(zone_observations: list) -> str:
 
 
 def determine_uncertainty_level(
-    zone_observations: list,
+    zone_observations: list[ZoneObservation],
     nominal_life: float | None,
     conservative_life: float | None,
     upper_life: float | None,
     crossing_diagnostics: list,
 ) -> UncertaintyLevel:
     severity = 0
-
     if not zone_observations or all((observation.measurement_count or 0) == 0 for observation in zone_observations):
         severity = max(severity, 2)
     if any(observation.rate_fit_mode == RateFitMode.BASELINE_FALLBACK for observation in zone_observations):
         severity = max(severity, 3)
+    elif any(observation.rate_fit_mode == RateFitMode.HISTORY_FIT_WITH_TREND_GUARD for observation in zone_observations):
+        severity = max(severity, 2)
     elif any(
-        observation.rate_fit_mode in {
-            RateFitMode.SINGLE_OBSERVATION,
-            RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE,
-        }
+        observation.rate_fit_mode in {RateFitMode.SINGLE_OBSERVATION, RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE}
         for observation in zone_observations
     ):
         severity = max(severity, 2)
     elif any(observation.rate_fit_mode == RateFitMode.TWO_POINT for observation in zone_observations):
         severity = max(severity, 1)
+
+    if any((observation.fit_quality_score or 0.0) < 0.45 for observation in zone_observations):
+        severity = max(severity, 2)
 
     finite_band = [value for value in (conservative_life, upper_life) if value is not None]
     if nominal_life is not None and len(finite_band) == 2:
@@ -582,23 +616,15 @@ def determine_uncertainty_level(
         elif spread_ratio >= 0.10:
             severity = max(severity, 1)
 
-    if any(
-        crossing.status in {"near_flat_no_crossing", "numerically_uncertain_crossing"}
-        for crossing in crossing_diagnostics
-    ):
+    if any(crossing.status in {"near_flat_no_crossing", "numerically_uncertain_crossing"} for crossing in crossing_diagnostics):
         severity = max(severity, 2)
 
-    mapping = {
-        0: UncertaintyLevel.LOW,
-        1: UncertaintyLevel.MODERATE,
-        2: UncertaintyLevel.HIGH,
-        3: UncertaintyLevel.VERY_HIGH,
-    }
+    mapping = {0: UncertaintyLevel.LOW, 1: UncertaintyLevel.MODERATE, 2: UncertaintyLevel.HIGH, 3: UncertaintyLevel.VERY_HIGH}
     return mapping[min(severity, 3)]
 
 
 def build_scenario_uncertainty_basis(
-    zone_observations: list,
+    zone_observations: list[ZoneObservation],
     scenario: CalculationScenarioInput,
     uncertainty_source: str,
     nominal_life: float | None,
@@ -606,21 +632,35 @@ def build_scenario_uncertainty_basis(
     upper_life: float | None,
 ) -> List[str]:
     basis: List[str] = []
-    if any(
-        observation.rate_lower_mm_per_year is not None or observation.rate_upper_mm_per_year is not None
-        for observation in zone_observations
-    ):
+    if any(observation.rate_lower_mm_per_year is not None or observation.rate_upper_mm_per_year is not None for observation in zone_observations):
         basis.append("интервал v_lower/v_upper по истории обследований")
     if scenario.demand_factor != 1.0 or scenario.corrosion_k_factor != 1.0 or scenario.repair_factor is not None:
-        basis.append(
-            "сценарный разброс demand/corrosion/repair факторов"
-        )
+        basis.append("сценарный разброс demand/corrosion/repair факторов")
     if uncertainty_source != "inspection_history_band":
         basis.append(f"источник неопределенности: {uncertainty_source}")
-    if nominal_life is not None and conservative_life is not None and upper_life is not None:
-        if upper_life > conservative_life:
-            basis.append("central/conservative/upper траектории ресурса")
+    if nominal_life is not None and conservative_life is not None and upper_life is not None and upper_life > conservative_life:
+        basis.append("central/conservative/upper траектории ресурса")
     return sorted(set(basis))
+
+
+def build_scenario_uncertainty_warnings(
+    *,
+    current_zone_states,
+    nominal_crossing,
+    remaining_life: float | None,
+    conservative_life: float | None,
+    upper_life: float | None,
+) -> List[str]:
+    warnings: List[str] = []
+    if conservative_life is not None and remaining_life is not None and conservative_life < remaining_life:
+        warnings.append("Консервативный ресурс меньше номинального из-за верхней границы прогнозной скорости деградации.")
+    if upper_life is not None and remaining_life is not None and upper_life > remaining_life:
+        warnings.append("Верхняя траектория использует нижнюю границу скорости деградации и дает более долгий ориентир по ресурсу.")
+    if any(state.forecast_source == "baseline_fallback" for state in current_zone_states):
+        warnings.append("Часть зон продолжена по baseline fallback; uncertainty band ограничен качеством истории обследований.")
+    if nominal_crossing.status in {"near_flat_no_crossing", "numerically_uncertain_crossing"}:
+        warnings.append("Поиск предельного состояния имеет пониженную численную определенность; ориентируйтесь на интервал ресурса.")
+    return warnings
 
 
 def build_refinement_diagnostics(crossing) -> RefinementDiagnostics:
@@ -632,6 +672,54 @@ def build_refinement_diagnostics(crossing) -> RefinementDiagnostics:
         margin_span_value=crossing.margin_span_value,
         warnings=list(crossing.warnings),
     )
+
+
+def aggregate_ml_metadata(zone_observations: list[ZoneObservation]) -> dict:
+    if not zone_observations:
+        return {"ml_correction_factor": 1.0, "coverage_score": 0.0, "training_regime": "heuristic_anchor", "ml_warning_flags": []}
+
+    governing = max(
+        zone_observations,
+        key=lambda observation: (
+            observation.effective_rate_mm_per_year or 0.0,
+            observation.observed_loss_mm or 0.0,
+            observation.measurement_count,
+        ),
+    )
+    return {
+        "ml_correction_factor": governing.ml_correction_factor,
+        "coverage_score": min((observation.coverage_score for observation in zone_observations), default=0.0),
+        "training_regime": governing.training_regime,
+        "ml_warning_flags": sorted({flag for observation in zone_observations for flag in observation.ml_warning_flags}),
+    }
+
+
+def collect_validation_warnings(request: CalculationRequest) -> List[str]:
+    warnings: List[str] = []
+    warnings.extend(_normalization_warnings(request.normalization_metadata, "request"))
+    warnings.extend(_normalization_warnings(request.section.normalization_metadata, "section"))
+    warnings.extend(_normalization_warnings(request.material.normalization_metadata, "material"))
+    warnings.extend(_normalization_warnings(request.action.normalization_metadata, "action"))
+    for index, scenario in enumerate(request.scenarios):
+        warnings.extend(_normalization_warnings(scenario.normalization_metadata, f"scenario[{index}]"))
+    for inspection_index, inspection in enumerate(request.inspections):
+        for measurement_index, measurement in enumerate(inspection.measurements):
+            warnings.extend(_normalization_warnings(measurement.normalization_metadata, f"inspection[{inspection_index}].measurement[{measurement_index}]"))
+    return sorted(set(warnings))
+
+
+def _normalization_warnings(metadata: dict, prefix: str) -> List[str]:
+    warnings: List[str] = []
+    for field_name, note in (metadata or {}).items():
+        if isinstance(note, dict) and note.get("input_unit") and note.get("normalized_unit"):
+            source_fields = ", ".join(note.get("source_fields", []))
+            suffix = f" ({source_fields})" if source_fields else ""
+            warnings.append(f"{prefix}.{field_name}: единицы нормализованы {note['input_unit']} -> {note['normalized_unit']}{suffix}.")
+    return warnings
+
+
+def determine_normalization_mode(validation_warnings: List[str]) -> str:
+    return "schema_validated_with_unit_normalization" if validation_warnings else "schema_validated"
 
 
 def hash_request_inspections(request: CalculationRequest) -> str:

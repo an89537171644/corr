@@ -78,6 +78,27 @@ def convert_value(value: float | None, unit: str, spec: UnitSpec) -> tuple[float
     return float(value) * spec.supported[normalized], metadata
 
 
+def _convert_value_with_target_metadata(
+    value: float | None,
+    unit: str,
+    spec: UnitSpec,
+    target_unit: str,
+) -> tuple[float | None, Optional[dict]]:
+    converted, metadata = convert_value(value, unit, spec)
+    if converted is None:
+        return converted, metadata
+
+    if metadata is None:
+        normalized = normalize_unit_name(unit, spec)
+        if normalized != target_unit:
+            metadata = _build_metadata(unit, _normalize_token(unit), target_unit, spec.quantity)
+    elif metadata.get("normalized_unit") != target_unit:
+        metadata = dict(metadata)
+        metadata["normalized_unit"] = target_unit
+
+    return converted, metadata
+
+
 LENGTH_SPEC = UnitSpec(
     quantity="length",
     supported={
@@ -264,7 +285,7 @@ def convert_length_to_mm(value: float | None, unit: str) -> float | None:
 
 
 def convert_length_to_mm_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, LENGTH_SPEC)
+    return _convert_value_with_target_metadata(value, unit, LENGTH_SPEC, "mm")
 
 
 def convert_area_to_mm2(value: float | None, unit: str) -> float | None:
@@ -273,7 +294,7 @@ def convert_area_to_mm2(value: float | None, unit: str) -> float | None:
 
 
 def convert_area_to_mm2_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, AREA_SPEC)
+    return _convert_value_with_target_metadata(value, unit, AREA_SPEC, "mm2")
 
 
 def convert_inertia_to_mm4(value: float | None, unit: str) -> float | None:
@@ -282,7 +303,7 @@ def convert_inertia_to_mm4(value: float | None, unit: str) -> float | None:
 
 
 def convert_inertia_to_mm4_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, INERTIA_SPEC)
+    return _convert_value_with_target_metadata(value, unit, INERTIA_SPEC, "mm4")
 
 
 def convert_section_modulus_to_mm3(value: float | None, unit: str) -> float | None:
@@ -291,7 +312,7 @@ def convert_section_modulus_to_mm3(value: float | None, unit: str) -> float | No
 
 
 def convert_section_modulus_to_mm3_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, SECTION_MODULUS_SPEC)
+    return _convert_value_with_target_metadata(value, unit, SECTION_MODULUS_SPEC, "mm3")
 
 
 def convert_stress_to_mpa(value: float | None, unit: str) -> float | None:
@@ -300,7 +321,7 @@ def convert_stress_to_mpa(value: float | None, unit: str) -> float | None:
 
 
 def convert_stress_to_mpa_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, STRESS_SPEC)
+    return _convert_value_with_target_metadata(value, unit, STRESS_SPEC, "mpa")
 
 
 def convert_force_to_kn(value: float | None, unit: str) -> float | None:
@@ -309,7 +330,7 @@ def convert_force_to_kn(value: float | None, unit: str) -> float | None:
 
 
 def convert_force_to_kn_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, FORCE_SPEC)
+    return _convert_value_with_target_metadata(value, unit, FORCE_SPEC, "kn")
 
 
 def convert_moment_to_knm(value: float | None, unit: str) -> float | None:
@@ -318,7 +339,7 @@ def convert_moment_to_knm(value: float | None, unit: str) -> float | None:
 
 
 def convert_moment_to_knm_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, MOMENT_SPEC)
+    return _convert_value_with_target_metadata(value, unit, MOMENT_SPEC, "kn*m")
 
 
 def convert_time_to_years(value: float | None, unit: str) -> float | None:
@@ -327,7 +348,7 @@ def convert_time_to_years(value: float | None, unit: str) -> float | None:
 
 
 def convert_time_to_years_with_metadata(value: float | None, unit: str) -> tuple[float | None, Optional[dict]]:
-    return convert_value(value, unit, TIME_SPEC)
+    return _convert_value_with_target_metadata(value, unit, TIME_SPEC, "year")
 
 
 def convert_growth_to_per_year(value: float | None, unit: str) -> float | None:
@@ -344,4 +365,9 @@ def convert_growth_to_per_year_with_metadata(value: float | None, unit: str) -> 
     if period_years <= 0:
         raise UnitNormalizationError(unit, "growth time", TIME_SPEC.supported, TIME_SPEC.aliases)
     periods_per_year = 1.0 / period_years
+    if metadata is None and normalized != "year":
+        metadata = _build_metadata(unit, _normalize_token(unit), "year", TIME_SPEC.quantity)
+    elif metadata is not None:
+        metadata = dict(metadata)
+        metadata["normalized_unit"] = "year"
     return (1.0 + float(value)) ** periods_per_year - 1.0, metadata

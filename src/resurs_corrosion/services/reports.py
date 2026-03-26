@@ -26,8 +26,10 @@ from ..domain import (
     CalculationRequest,
     CalculationResponse,
     CheckType,
+    EngineeringCapacityMode,
     EngineeringConfidenceLevel,
     ForecastMode,
+    NormativeCompletenessLevel,
     RateFitMode,
     ReducerMode,
     ReportArtifact,
@@ -665,6 +667,16 @@ def build_model_rows(context: ReportContext) -> List[List[str]]:
         ["Количество сценариев", str(len(response.results))],
         ["Доля превышений", format_number(response.risk_profile.exceedance_share, 3)],
     ]
+    rows.extend(
+        [
+            ["Engineering capacity mode", getattr(response.engineering_capacity_mode, "value", str(response.engineering_capacity_mode))],
+            ["Normative completeness", getattr(response.normative_completeness_level, "value", str(response.normative_completeness_level))],
+            ["ML correction factor", format_number(response.ml_correction_factor, 3)],
+            ["ML coverage score", format_number(response.coverage_score, 3)],
+            ["ML training regime", response.training_regime],
+            ["Normalization mode", response.normalization_mode],
+        ]
+    )
     if response.ml_model_version.dataset_journal:
         rows.append(["ML dataset journal", summarize_dataset_journal(response.ml_model_version.dataset_journal)])
     if response.ml_model_version.candidate_registry:

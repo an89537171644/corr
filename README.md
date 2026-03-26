@@ -6,6 +6,15 @@ remaining service life.
 
 ## What is implemented
 
+- Stage 4 engineering modes with `engineering_basic`, `engineering_plus`, and `fallback_estimate`.
+- Stage 4 combined-check metadata with `interaction_ratio`, `interaction_mode`, `combined_check_level`, and `capacity_components`.
+- Stage 4 normative scope tags with `partial_engineering`, `extended_engineering`, and `not_normative`.
+- Stage 4 rate-fit diagnostics with `history_fit_with_trend_guard`, `fit_quality_score`, `num_valid_points`, `rate_guard_flags`, and explicit rate confidence intervals.
+- Stage 4 life bundles with `lower/base/upper/sources/mode` on scenario and top-level responses.
+- Stage 4 reducer taxonomy with `verified_reducer`, `engineering_reducer`, and `fallback_reducer`.
+- Stage 4 hybrid ML runtime modes with `heuristic`, `trained_single`, `trained_ensemble`, and `fallback`.
+- Stage 4 normalization provenance with `validation_warnings` and `normalization_mode`.
+
 - FastAPI backend skeleton with versioned API routes.
 - SQLAlchemy persistence layer with local SQLite by default and PostgreSQL support via `DATABASE_URL`.
 - CRUD flows for assets, elements, zones, and inspection journals.
@@ -46,6 +55,8 @@ remaining service life.
 - Explicit `central/conservative/upper` engineering trajectories for resistance and life guidance.
 - Analysis payload, reports, and UI now expose:
   - `engineering_confidence_level`
+  - `engineering_capacity_mode`
+  - `normative_completeness_level`
   - `resistance_mode`
   - `reducer_mode`
   - `uncertainty_level`
@@ -53,6 +64,9 @@ remaining service life.
   - `refinement_diagnostics`
   - `rate_fit_mode`
   - `ml_mode`
+  - `life_estimate_bundle`
+  - `validation_warnings`
+  - `normalization_mode`
   - `warnings[]`
   - `fallback_flags[]`
 - Scenario library for `C2` to `C5` environments and first-line what-if cases.
@@ -60,7 +74,7 @@ remaining service life.
 - One-command end-to-end acceptance suite with golden demo expectations under `scripts/run_acceptance_suite.py`.
 - One-command ML demo training script under `scripts/train_demo_model.py` that emits a saved model artifact and summary JSON.
 - Root project guidance in `AGENTS.md` and project-scoped Codex settings in `.codex/config.toml`.
-- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/limitations.md`, `docs/reliability-roadmap.md`, `docs/section-verification.md`, `docs/data-normalization-roadmap.md`, and `docs/remediation_stage2.md`.
+- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/ml-stage4-roadmap.md`, `docs/engineering-confidence.md`, `docs/limitations.md`, `docs/reliability-roadmap.md`, `docs/section-verification.md`, `docs/section-verification-stage4.md`, `docs/data-normalization-roadmap.md`, `docs/remediation_stage2.md`, `docs/remediation_stage3.md`, and `docs/remediation_stage4.md`.
 - Pytest coverage for baseline formulas, API integration, reducers, rate fitting, refined limit-state search, combined checks, and report warnings.
 - Additional stage 3 regression coverage for enhanced resistance mode, uncertainty band, units normalization, reducer monotonicity, ML metadata, and report payload flags.
 
@@ -71,7 +85,7 @@ remaining service life.
 - The current risk profile is scenario-based, not probabilistic. It reports the
   share of tested scenarios that reach a limit state within the forecast horizon.
 - The hybrid forecast preserves a deterministic heuristic anchor and can evolve
-  to trained candidate models, but it is still not a final calibrated field model.
+  to `trained_single` or `trained_ensemble` candidate modes, but it is still not a final calibrated field model.
 - The engineering uncertainty band is interval-based and not a full probabilistic reliability model.
 - The staged boundary between implemented interval guidance and planned reliability theory is fixed in `docs/reliability-roadmap.md`.
 - For unsupported profiles, `generic_reduced` applies a conservative thickness
@@ -200,15 +214,19 @@ The root route `/` now serves a lightweight web application with:
 - [docs/architecture.md](docs/architecture.md)
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/calculation-model.md](docs/calculation-model.md)
+- [docs/engineering-confidence.md](docs/engineering-confidence.md)
 - [docs/ml-pipeline.md](docs/ml-pipeline.md)
+- [docs/ml-stage4-roadmap.md](docs/ml-stage4-roadmap.md)
 - [docs/engineering-applicability.md](docs/engineering-applicability.md)
 - [docs/rate-fitting.md](docs/rate-fitting.md)
 - [docs/limitations.md](docs/limitations.md)
 - [docs/section-verification.md](docs/section-verification.md)
+- [docs/section-verification-stage4.md](docs/section-verification-stage4.md)
 - [docs/data-normalization-roadmap.md](docs/data-normalization-roadmap.md)
 - [docs/acceptance-suite.md](docs/acceptance-suite.md)
 - [docs/remediation_stage2.md](docs/remediation_stage2.md)
 - [docs/remediation_stage3.md](docs/remediation_stage3.md)
+- [docs/remediation_stage4.md](docs/remediation_stage4.md)
 - [docs/remediation_checklist.md](docs/remediation_checklist.md)
 
 ## Deployment note

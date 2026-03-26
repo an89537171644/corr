@@ -73,7 +73,7 @@ def test_candidate_metadata_is_exported_when_registry_is_available(monkeypatch) 
     model = HybridRateEnsembleModel().fit({"dataset_kind": "real", "version": "real-v1", "records": build_training_records(3)})
     info = model.model_info()
 
-    assert info["execution_mode"] == "trained"
+    assert info["execution_mode"] == "trained_single"
     assert info["candidate_count"] == 1
     assert info["accepted_candidate_count"] == 1
     assert info["rejected_candidate_count"] == 1
@@ -82,6 +82,8 @@ def test_candidate_metadata_is_exported_when_registry_is_available(monkeypatch) 
     assert info["accepted_row_count"] == 3
     assert info["dataset_journal"][0]["dataset_hash"]
     assert info["acceptance_policy"]["mae_threshold"] == 0.18
+    assert info["training_regime"] == "single_candidate_anchor"
+    assert 0.0 <= info["coverage_score"] <= 1.0
 
     feature = DegradationFeatureVector(
         environment_category="C3",

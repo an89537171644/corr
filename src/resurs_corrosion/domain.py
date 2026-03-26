@@ -66,6 +66,18 @@ class EngineeringConfidenceLevel(str, Enum):
     D = "D"
 
 
+class EngineeringCapacityMode(str, Enum):
+    ENGINEERING_BASIC = "engineering_basic"
+    ENGINEERING_PLUS = "engineering_plus"
+    FALLBACK_ESTIMATE = "fallback_estimate"
+
+
+class NormativeCompletenessLevel(str, Enum):
+    PARTIAL_ENGINEERING = "partial_engineering"
+    EXTENDED_ENGINEERING = "extended_engineering"
+    NOT_NORMATIVE = "not_normative"
+
+
 class ResistanceMode(str, Enum):
     DIRECT = "direct"
     APPROXIMATE = "approximate"
@@ -77,6 +89,9 @@ class ResistanceMode(str, Enum):
 class ReducerMode(str, Enum):
     DIRECT = "direct"
     GENERIC_FALLBACK = "generic_fallback"
+    VERIFIED_REDUCER = "verified_reducer"
+    ENGINEERING_REDUCER = "engineering_reducer"
+    FALLBACK_REDUCER = "fallback_reducer"
 
 
 class RateFitMode(str, Enum):
@@ -85,6 +100,7 @@ class RateFitMode(str, Enum):
     TWO_POINT = "two_point"
     ROBUST_HISTORY_FIT = "robust_history_fit"
     ROBUST_HISTORY_FIT_LOW_CONFIDENCE = "robust_history_fit_low_confidence"
+    HISTORY_FIT_WITH_TREND_GUARD = "history_fit_with_trend_guard"
 
 
 class RiskMode(str, Enum):
@@ -438,6 +454,11 @@ class CalculationRequest(BaseModel):
         return self
 
 
+class RateConfidenceInterval(BaseModel):
+    lower_mm_per_year: Optional[float] = None
+    upper_mm_per_year: Optional[float] = None
+
+
 class ZoneObservation(BaseModel):
     zone_id: str
     role: str
@@ -450,14 +471,22 @@ class ZoneObservation(BaseModel):
     rate_upper_mm_per_year: Optional[float] = None
     rate_fit_mode: RateFitMode = RateFitMode.BASELINE_FALLBACK
     rate_confidence: Optional[float] = None
+    fit_quality_score: Optional[float] = None
+    rate_confidence_interval: RateConfidenceInterval = Field(default_factory=RateConfidenceInterval)
     used_points_count: int = 0
+    num_valid_points: int = 0
     fit_sample_size: int = 0
     effective_weight_sum: Optional[float] = None
     fit_rmse: Optional[float] = None
     fit_r2_like: Optional[float] = None
     history_span_years: Optional[float] = None
+    rate_guard_flags: List[str] = Field(default_factory=list)
     latest_inspection_date: Optional[date] = None
     measurement_count: int = 0
+    ml_correction_factor: float = 1.0
+    coverage_score: float = 0.0
+    training_regime: str = "heuristic_anchor"
+    ml_warning_flags: List[str] = Field(default_factory=list)
     source: str
     warnings: List[str] = Field(default_factory=list)
 
@@ -476,6 +505,13 @@ class SectionProperties(BaseModel):
     area_mm2: float
     inertia_mm4: float
     section_modulus_mm3: float
+
+
+class CapacityComponents(BaseModel):
+    tension: Optional[float] = None
+    compression: Optional[float] = None
+    bending_major: Optional[float] = None
+    interaction: Optional[float] = None
 
 
 class TimelinePoint(BaseModel):
@@ -507,6 +543,14 @@ class LifeIntervalYears(BaseModel):
     conservative_years: Optional[float] = None
 
 
+class LifeEstimateBundle(BaseModel):
+    lower: Optional[float] = None
+    base: Optional[float] = None
+    upper: Optional[float] = None
+    sources: List[str] = Field(default_factory=list)
+    mode: str = "interval_engineering"
+
+
 class ScenarioResult(BaseModel):
     scenario_code: str
     scenario_name: str
@@ -527,11 +571,19 @@ class ScenarioResult(BaseModel):
     crossing_bracket_width_years: Optional[float] = None
     crossing_refinement_iterations: int = 0
     engineering_confidence_level: EngineeringConfidenceLevel = EngineeringConfidenceLevel.D
+    engineering_capacity_mode: EngineeringCapacityMode = EngineeringCapacityMode.FALLBACK_ESTIMATE
+    normative_completeness_level: NormativeCompletenessLevel = NormativeCompletenessLevel.NOT_NORMATIVE
     resistance_mode: ResistanceMode = ResistanceMode.APPROXIMATE
     reducer_mode: ReducerMode = ReducerMode.DIRECT
+    capacity_components: CapacityComponents = Field(default_factory=CapacityComponents)
+    interaction_ratio: Optional[float] = None
+    interaction_mode: Optional[str] = None
+    combined_check_level: Optional[str] = None
+    combined_check_warning: Optional[str] = None
     uncertainty_level: UncertaintyLevel = UncertaintyLevel.MODERATE
     uncertainty_source: str = "scenario_library_only"
     uncertainty_trajectories: UncertaintyTrajectories = Field(default_factory=UncertaintyTrajectories)
+    life_estimate_bundle: LifeEstimateBundle = Field(default_factory=LifeEstimateBundle)
     refinement_diagnostics: RefinementDiagnostics = Field(default_factory=RefinementDiagnostics)
     uncertainty_basis: List[str] = Field(default_factory=list)
     uncertainty_warnings: List[str] = Field(default_factory=list)
@@ -587,11 +639,14 @@ class CalculationResponse(BaseModel):
     results: List[ScenarioResult]
     risk_profile: RiskProfile
     engineering_confidence_level: EngineeringConfidenceLevel = EngineeringConfidenceLevel.D
+    engineering_capacity_mode: EngineeringCapacityMode = EngineeringCapacityMode.FALLBACK_ESTIMATE
+    normative_completeness_level: NormativeCompletenessLevel = NormativeCompletenessLevel.NOT_NORMATIVE
     resistance_mode: ResistanceMode = ResistanceMode.APPROXIMATE
     reducer_mode: ReducerMode = ReducerMode.DIRECT
     rate_fit_mode: RateFitMode = RateFitMode.BASELINE_FALLBACK
     risk_mode: RiskMode = RiskMode.SCENARIO_RISK
     life_interval_years: LifeIntervalYears = Field(default_factory=LifeIntervalYears)
+    life_estimate_bundle: LifeEstimateBundle = Field(default_factory=LifeEstimateBundle)
     uncertainty_level: UncertaintyLevel = UncertaintyLevel.MODERATE
     uncertainty_source: str = "scenario_library_only"
     uncertainty_basis: List[str] = Field(default_factory=list)
@@ -600,9 +655,15 @@ class CalculationResponse(BaseModel):
     refinement_diagnostics: RefinementDiagnostics = Field(default_factory=RefinementDiagnostics)
     governing_uncertainty_trajectories: UncertaintyTrajectories = Field(default_factory=UncertaintyTrajectories)
     ml_mode: str = "heuristic"
+    ml_correction_factor: float = 1.0
+    coverage_score: float = 0.0
+    training_regime: str = "heuristic_anchor"
+    ml_warning_flags: List[str] = Field(default_factory=list)
     ml_candidate_count: int = 0
     ml_blend_mode: str = "heuristic_only"
     ml_interval_source: str = "heuristic_band"
+    validation_warnings: List[str] = Field(default_factory=list)
+    normalization_mode: str = "schema_validated"
     warnings: List[str] = Field(default_factory=list)
     used_measurement_count: int = 0
     used_inspection_count: int = 0

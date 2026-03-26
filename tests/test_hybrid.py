@@ -225,7 +225,7 @@ def test_hybrid_model_training_interface_preserves_fit_save_and_load(tmp_path: P
 
     assert model.fitted is True
     assert info["accepted_row_count"] == 4
-    assert info["execution_mode"] in {"trained", "fallback"}
+    assert info["execution_mode"] in {"trained_single", "trained_ensemble", "fallback"}
     assert isinstance(
         model.predict_rate_factor(
             DegradationFeatureVector(

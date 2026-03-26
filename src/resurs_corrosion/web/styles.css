@@ -384,6 +384,12 @@ button:hover {
   border: 1px dashed rgba(25, 51, 58, 0.12);
 }
 
+.subgrid-guide {
+  margin: 12px 0 0;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
 .row-stack {
   display: grid;
   gap: 10px;
@@ -394,12 +400,50 @@ button:hover {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr)) 104px;
   gap: 8px;
+  align-items: start;
+}
+
+.zone-row {
+  grid-template-columns: 1.45fr repeat(4, minmax(0, 1fr)) 104px;
+}
+
+.measurement-row {
+  grid-template-columns: 1.45fr repeat(5, minmax(0, 1fr)) 104px;
+}
+
+.row-field {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.row-help {
+  color: var(--muted);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.zone-select-field {
+  min-width: 0;
+}
+
+.backing-field {
+  display: none !important;
 }
 
 .remove-row {
   background: rgba(168, 57, 45, 0.1);
   color: var(--danger);
   box-shadow: none;
+  align-self: end;
 }
 
 .summary-grid {

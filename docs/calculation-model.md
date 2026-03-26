@@ -37,6 +37,10 @@ The observed rate is now estimated by `infer_degradation_rate(...)` with staged 
 - `robust_history_fit_low_confidence`
   same fitting contour as `robust_history_fit`, but explicitly downgraded when the
   history is short, contradictory, or weakly explained by the fitted trend
+- `history_fit_with_trend_guard`
+  robust history fit with explicit engineering guardrails for negative or
+  physically suspicious trends, plus `rate_guard_flags` and
+  `fit_quality_score`
 
 ## 3. Baseline model
 
@@ -92,7 +96,7 @@ Implemented section reducers:
 
 ## 7. Resistance and remaining life
 
-Residual resistance is approximated at engineering-MVP/stage-3 level:
+Residual resistance is approximated at engineering-MVP+/stage-4 level:
 
 - axial tension/compression through effective area
 - `axial_compression_enhanced` through explicit engineering slenderness inputs and transparent downgrade rules
@@ -100,6 +104,19 @@ Residual resistance is approximated at engineering-MVP/stage-3 level:
 - basic combined axial force and bending interaction check `N/Nrd + M/Mrd <= 1.0`
 - enhanced combined axial force and bending interaction check with explicit axial-force kind,
   effective length, effective-length factor, support condition, and moment amplification input
+- explicit capacity-mode tagging:
+  - `engineering_basic`
+  - `engineering_plus`
+  - `fallback_estimate`
+- explicit normative-scope tagging:
+  - `partial_engineering`
+  - `extended_engineering`
+  - `not_normative`
+- structured combined-check payload:
+  - `capacity_components`
+  - `interaction_ratio`
+  - `interaction_mode`
+  - `combined_check_level`
 
 Remaining life is found from:
 

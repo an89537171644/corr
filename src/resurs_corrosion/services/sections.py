@@ -98,7 +98,7 @@ def evaluate_effective_section(
     initial_map = _build_initial_thickness_map(zones)
     warnings: List[str] = []
     fallback_flags: List[str] = []
-    reducer_mode = ReducerMode.DIRECT
+    reducer_mode = ReducerMode.VERIFIED_REDUCER
     confidence = EngineeringConfidenceLevel.A
 
     if section.section_type == SectionType.PLATE:
@@ -111,6 +111,7 @@ def evaluate_effective_section(
         if used_fallback:
             warnings.append(f"Для reducer '{label}' использована fallback-толщина вместо роли зоны 'plate'.")
             confidence = EngineeringConfidenceLevel.B
+            reducer_mode = ReducerMode.ENGINEERING_REDUCER
 
         width = float(section.width_mm)
         area = width * thickness
@@ -136,6 +137,7 @@ def evaluate_effective_section(
         if top_fallback or bottom_fallback or web_fallback:
             warnings.append("Для I/channel reducer часть зон не сопоставлена напрямую; использованы номинальные толщины профиля.")
             confidence = EngineeringConfidenceLevel.B
+            reducer_mode = ReducerMode.ENGINEERING_REDUCER
 
         return finalize_section_assessment(
             _build_i_like_section(height, flange_width, top_flange, bottom_flange, web),
@@ -146,6 +148,7 @@ def evaluate_effective_section(
         )
 
     if section.section_type == SectionType.ANGLE:
+        reducer_mode = ReducerMode.ENGINEERING_REDUCER
         leg_horizontal = float(section.leg_horizontal_mm)
         leg_vertical = float(section.leg_vertical_mm)
         default_thickness = float(section.leg_thickness_mm)
@@ -162,7 +165,6 @@ def evaluate_effective_section(
         )
         if used_fallback:
             warnings.append("Для angle reducer использована fallback-толщина, так как специализированные роли зон отсутствуют.")
-            confidence = EngineeringConfidenceLevel.B
 
         area_horizontal = leg_horizontal * thickness
         area_vertical = thickness * leg_vertical
@@ -220,6 +222,7 @@ def evaluate_effective_section(
         )
 
     if section.section_type == SectionType.TUBE:
+        reducer_mode = ReducerMode.ENGINEERING_REDUCER
         outer_diameter = float(section.outer_diameter_mm)
         default_wall = float(section.wall_thickness_mm)
         warnings.append("Reducer tube интерпретируется как circular hollow section.")
@@ -240,7 +243,7 @@ def evaluate_effective_section(
             fallback_flags,
         )
 
-    reducer_mode = ReducerMode.GENERIC_FALLBACK
+    reducer_mode = ReducerMode.FALLBACK_REDUCER
     confidence = EngineeringConfidenceLevel.D
     warnings.append(
         "Использован generic_reduced fallback; результат применим только как укрупненная инженерная оценка "

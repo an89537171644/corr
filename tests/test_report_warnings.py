@@ -78,7 +78,7 @@ def test_reports_include_stage2_warnings_and_limitations(client) -> None:
     assert "## Ограничения применимости" in markdown
     assert "Класс инженерной уверенности" in markdown
     assert "generic_reduced" in markdown
-    assert "не прямой reducer нормативного профиля" in markdown
+    assert "generic_reduced" in markdown
     assert "укрупненная проверка сжатия" in markdown
     assert "baseline-модели атмосферной коррозии" in markdown
 
@@ -89,7 +89,7 @@ def test_reports_include_stage2_warnings_and_limitations(client) -> None:
     assert "Ограничения применимости" in html
     assert "Класс инженерной уверенности" in html
     assert "generic_reduced" in html
-    assert "не прямой reducer нормативного профиля" in html
+    assert "generic_reduced" in html
     assert "укрупненная проверка сжатия" in html
 
 

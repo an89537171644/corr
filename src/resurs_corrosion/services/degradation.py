@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from ..domain import (
     CalculationScenarioInput,
     ForecastMode,
     InspectionRecord,
+    RateConfidenceInterval,
     RateFitMode,
     ZoneDefinition,
     ZoneObservation,
@@ -77,14 +77,25 @@ def build_zone_observations(
                     rate_upper_mm_per_year=baseline_zone_rate_value,
                     rate_fit_mode=RateFitMode.BASELINE_FALLBACK,
                     rate_confidence=0.0,
+                    fit_quality_score=0.0,
+                    rate_confidence_interval=RateConfidenceInterval(
+                        lower_mm_per_year=baseline_zone_rate_value,
+                        upper_mm_per_year=baseline_zone_rate_value,
+                    ),
                     used_points_count=0,
+                    num_valid_points=0,
                     fit_sample_size=0,
                     effective_weight_sum=0.0,
                     fit_rmse=0.0,
                     fit_r2_like=0.0,
                     history_span_years=0.0,
+                    rate_guard_flags=[],
                     latest_inspection_date=None,
                     measurement_count=0,
+                    ml_correction_factor=1.0,
+                    coverage_score=0.0,
+                    training_regime="heuristic_anchor",
+                    ml_warning_flags=["ml_heuristic_anchor_only"],
                     source="baseline_fallback",
                     warnings=["История обследований отсутствует; использована baseline-модель."],
                 )
@@ -104,13 +115,16 @@ def build_zone_observations(
             observed_rate_mm_per_year=observed_rate,
             baseline_rate_mm_per_year=baseline_zone_rate_value,
         )
-        hybrid_rate = observed_rate * model.predict_rate_factor(features)
+        ml_diagnostics = model.runtime_diagnostics(features)
+        hybrid_rate = observed_rate * ml_diagnostics["ml_correction_factor"]
         effective_rate, source = select_effective_rate(
             forecast_mode=forecast_mode,
             observed_rate=observed_rate,
             baseline_rate_value=baseline_zone_rate_value,
             hybrid_rate=hybrid_rate,
         )
+        warnings = list(rate_fit.warnings)
+        warnings.extend(_translate_ml_warning_flags(ml_diagnostics["ml_warning_flags"]))
 
         observations.append(
             ZoneObservation(
@@ -125,16 +139,27 @@ def build_zone_observations(
                 rate_upper_mm_per_year=rate_fit.v_upper,
                 rate_fit_mode=rate_fit.fit_mode,
                 rate_confidence=rate_fit.rate_confidence,
+                fit_quality_score=rate_fit.fit_quality_score,
+                rate_confidence_interval=RateConfidenceInterval(
+                    lower_mm_per_year=rate_fit.v_lower,
+                    upper_mm_per_year=rate_fit.v_upper,
+                ),
                 used_points_count=rate_fit.used_points_count,
+                num_valid_points=rate_fit.num_valid_points,
                 fit_sample_size=rate_fit.fit_sample_size,
                 effective_weight_sum=rate_fit.effective_weight_sum,
                 fit_rmse=rate_fit.fit_rmse,
                 fit_r2_like=rate_fit.fit_r2_like,
                 history_span_years=rate_fit.history_span_years,
+                rate_guard_flags=rate_fit.rate_guard_flags,
                 latest_inspection_date=latest.performed_at,
                 measurement_count=sum(point.measurement_count for point in zone_points),
+                ml_correction_factor=ml_diagnostics["ml_correction_factor"],
+                coverage_score=ml_diagnostics["coverage_score"],
+                training_regime=ml_diagnostics["training_regime"],
+                ml_warning_flags=ml_diagnostics["ml_warning_flags"],
                 source=source,
-                warnings=rate_fit.warnings,
+                warnings=sorted(set(warnings)),
             )
         )
 
@@ -355,3 +380,17 @@ def rate_increment_with_repair(rate: float, delta_years: float, scenario: Calcul
     pre_repair = min(delta_years, scenario.repair_after_years)
     post_repair = max(0.0, delta_years - pre_repair)
     return (rate * pre_repair) + (rate * (scenario.repair_factor or 1.0) * post_repair)
+
+
+def _translate_ml_warning_flags(flags: Sequence[str]) -> List[str]:
+    translated: List[str] = []
+    for flag in flags:
+        if flag == "ml_heuristic_anchor_only":
+            translated.append("ML работает в режиме heuristic anchor без обученной candidate-модели.")
+        elif flag == "weak_training_coverage":
+            translated.append("Покрытие обучающей выборки ограничено; ML-коррекция снижена по доверию.")
+        elif flag == "ml_correction_clamped":
+            translated.append("ML-коррекция уперлась в допустимые инженерные границы и была ограничена.")
+        elif flag == "strong_ml_correction":
+            translated.append("ML-коррекция заметно влияет на скорость деградации и требует инженерной интерпретации.")
+    return translated

@@ -22,7 +22,7 @@ def test_plate_section_reference_values() -> None:
         [ZoneState(zone_id="z1", role="plate", corrosion_loss_mm=0.0, effective_thickness_mm=10.0)],
     )
 
-    assert result.reducer_mode == ReducerMode.DIRECT
+    assert result.reducer_mode == ReducerMode.VERIFIED_REDUCER
     assert result.engineering_confidence_level == EngineeringConfidenceLevel.A
     assert result.properties.area_mm2 == pytest.approx(2000.0)
     assert result.properties.inertia_mm4 == pytest.approx((200.0 * (10.0**3)) / 12.0)
@@ -124,7 +124,7 @@ def test_generic_reduced_emits_warning_and_lower_confidence() -> None:
         [ZoneState(zone_id="g1", role="generic_zone", corrosion_loss_mm=2.0, effective_thickness_mm=8.0)],
     )
 
-    assert result.reducer_mode == ReducerMode.GENERIC_FALLBACK
+    assert result.reducer_mode == ReducerMode.FALLBACK_REDUCER
     assert result.engineering_confidence_level == EngineeringConfidenceLevel.D
     assert result.properties.area_mm2 == pytest.approx(1600.0)
     assert result.properties.inertia_mm4 == pytest.approx(100000.0 * (0.8**3))
