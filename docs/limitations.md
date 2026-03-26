@@ -7,6 +7,7 @@ The MVP is intentionally engineering-first, but still simplified.
 - It is not a full SP 16 check engine.
 - Connection design, local buckling, and detailed stability checks are not fully implemented.
 - Remaining life is refined inside a local bracket, but still not derived from a full probabilistic reliability model.
+- The `combined_enhanced` mode is an engineering approximation and must not be presented as full normative SP 16 compliance.
 
 ## Hybrid forecast scope
 
@@ -17,8 +18,9 @@ The MVP is intentionally engineering-first, but still simplified.
 ## Inspection logic
 
 - For 3+ inspections the rate fit is robust-history based, but confidence intervals remain engineering approximations rather than full statistical posteriors.
+- `robust_history_fit_low_confidence` explicitly marks contradictory or weak histories, but it still remains an engineering-quality downgrade rather than a formal statistical rejection rule.
 - If no inspection is available for a zone, the calculation falls back to the classical atmospheric baseline.
-- Measurement units are stored, but automatic conversion is only implemented for `mm`, `cm`, and `m`.
+- Automatic conversion is now implemented for length/thickness, area, inertia, section modulus, stress, force, moment, and time units, but unsupported units still raise validation errors instead of being guessed silently.
 
 ## Section models
 
@@ -36,6 +38,7 @@ The MVP is intentionally engineering-first, but still simplified.
 
 - Reports are reproducible and exportable to DOCX/PDF/HTML/Markdown, but the office-format export still focuses on tabular narrative rather than branded enterprise templates.
 - Analysis runs are now stored in `analysis_runs` and retrievable through `GET /analysis/{id}`, but they are persisted as full JSON snapshots rather than a fully normalized analytical schema.
+- The uncertainty band is explicit in payloads and reports, but it is still interval-based engineering guidance, not a full probabilistic reliability assessment.
 
 ## Professional use boundary
 

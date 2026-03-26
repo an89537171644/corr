@@ -18,6 +18,7 @@ from ..domain import (
 from ..ml import DegradationFeatureVector, HybridRateEnsembleModel
 from .corrosion import MIN_THICKNESS_MM, LONG_TERM_THRESHOLD_YEARS, corrosion_loss
 from .rate_fit import infer_degradation_rate
+from .units import UnitNormalizationError, convert_length_to_mm
 
 
 @dataclass
@@ -77,6 +78,11 @@ def build_zone_observations(
                     rate_fit_mode=RateFitMode.BASELINE_FALLBACK,
                     rate_confidence=0.0,
                     used_points_count=0,
+                    fit_sample_size=0,
+                    effective_weight_sum=0.0,
+                    fit_rmse=0.0,
+                    fit_r2_like=0.0,
+                    history_span_years=0.0,
                     latest_inspection_date=None,
                     measurement_count=0,
                     source="baseline_fallback",
@@ -120,6 +126,11 @@ def build_zone_observations(
                 rate_fit_mode=rate_fit.fit_mode,
                 rate_confidence=rate_fit.rate_confidence,
                 used_points_count=rate_fit.used_points_count,
+                fit_sample_size=rate_fit.fit_sample_size,
+                effective_weight_sum=rate_fit.effective_weight_sum,
+                fit_rmse=rate_fit.fit_rmse,
+                fit_r2_like=rate_fit.fit_r2_like,
+                history_span_years=rate_fit.history_span_years,
                 latest_inspection_date=latest.performed_at,
                 measurement_count=sum(point.measurement_count for point in zone_points),
                 source=source,
@@ -188,14 +199,12 @@ def average_quality(measurements: Sequence) -> float:
 
 
 def measurement_to_mm(value: float, units: Optional[str]) -> float:
-    normalized = (units or "mm").strip().lower()
-    if normalized == "mm":
-        return float(value)
-    if normalized == "cm":
-        return float(value) * 10.0
-    if normalized == "m":
-        return float(value) * 1000.0
-    return float(value)
+    try:
+        return float(convert_length_to_mm(value, units or "mm"))
+    except UnitNormalizationError as exc:
+        raise ValueError(str(exc)) from exc
+
+
 def select_effective_rate(
     forecast_mode: ForecastMode,
     observed_rate: float,
@@ -218,6 +227,7 @@ def build_forecast_zone_states(
     b: float,
     scenario: CalculationScenarioInput,
     forecast_mode: ForecastMode,
+    rate_variant: str = "nominal",
 ) -> List[ZoneState]:
     observation_map = {item.zone_id: item for item in observations}
     states: List[ZoneState] = []
@@ -233,6 +243,7 @@ def build_forecast_zone_states(
             b=b,
             scenario=scenario,
             forecast_mode=forecast_mode,
+            rate_variant=rate_variant,
         )
         effective_thickness = zone.initial_thickness_mm - total_loss - (zone.pitting_factor * zone.pit_loss_mm)
         states.append(
@@ -259,6 +270,7 @@ def forecast_zone_loss(
     b: float,
     scenario: CalculationScenarioInput,
     forecast_mode: ForecastMode,
+    rate_variant: str = "nominal",
 ) -> float:
     baseline_total_loss = baseline_zone_loss(
         zone=zone,
@@ -293,7 +305,18 @@ def forecast_zone_loss(
         scenario.b_override or b,
     )
     scenario_rate_factor = scenario_baseline_rate / max(current_baseline_rate, 1e-6)
-    rate = max(0.0, (observation.effective_rate_mm_per_year or 0.0) * scenario_rate_factor)
+    if rate_variant == "conservative":
+        source_rate = max(observation.effective_rate_mm_per_year or 0.0, observation.rate_upper_mm_per_year or 0.0)
+    elif rate_variant == "optimistic":
+        lower = observation.rate_lower_mm_per_year
+        if lower is None:
+            source_rate = observation.effective_rate_mm_per_year or 0.0
+        else:
+            source_rate = min(observation.effective_rate_mm_per_year or lower, lower)
+    else:
+        source_rate = observation.effective_rate_mm_per_year or 0.0
+
+    rate = max(0.0, source_rate * scenario_rate_factor)
     delta_years = max(0.0, age_years - current_age_years)
     future_increment = rate_increment_with_repair(rate, delta_years, scenario)
     return max(0.0, observation.observed_loss_mm + future_increment)

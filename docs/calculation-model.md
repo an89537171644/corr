@@ -21,6 +21,8 @@ quality-based weighting.
 
 The observed rate is now estimated by `infer_degradation_rate(...)` with staged modes:
 
+- `baseline_fallback`
+  no usable inspection history, revert to the atmospheric baseline
 - `single_observation`
   `v_z = delta_obs / T_exp`
 - `two_point`
@@ -32,6 +34,9 @@ The observed rate is now estimated by `infer_degradation_rate(...)` with staged 
   - outlier suppression
   - returned interval `v_lower, v_upper`
   - metadata `fit_mode`, `rate_confidence`, `used_points_count`
+- `robust_history_fit_low_confidence`
+  same fitting contour as `robust_history_fit`, but explicitly downgraded when the
+  history is short, contradictory, or weakly explained by the fitted trend
 
 ## 3. Baseline model
 
@@ -87,11 +92,13 @@ Implemented section reducers:
 
 ## 7. Resistance and remaining life
 
-Residual resistance is approximated at engineering-MVP/stage-2 level:
+Residual resistance is approximated at engineering-MVP/stage-3 level:
 
 - axial tension/compression through effective area
 - major-axis bending through effective section modulus
 - basic combined axial force and bending interaction check `N/Nrd + M/Mrd <= 1.0`
+- enhanced combined axial force and bending interaction check with explicit axial-force kind,
+  effective length, effective-length factor, support condition, and moment amplification input
 
 Remaining life is found from:
 
@@ -103,7 +110,25 @@ The current search is no longer grid-only. It uses:
 - local sign-change bracket
 - linear/monotone refinement inside the bracket
 
-## 8. Forecast modes
+## 8. Uncertainty and risk layer
+
+Stage 3 keeps the scenario-based risk profile, but now separates two explicit modes:
+
+- `scenario_risk`
+  deterministic share of scenarios reaching the limit state inside the horizon
+- `engineering_uncertainty_band`
+  interval interpretation based on `v_lower/v_upper`, scenario factors, and refined
+  remaining-life search
+
+The response and reports expose:
+
+- `risk_mode`
+- `life_interval_years`
+- `uncertainty_basis`
+- `uncertainty_warnings`
+- `crossing_search_mode`
+
+## 9. Forecast modes
 
 Supported run modes:
 
@@ -116,7 +141,7 @@ Supported run modes:
 
 If no inspections exist, `observed` and `hybrid` automatically fall back to baseline.
 
-## 9. Engineering transparency
+## 10. Engineering transparency
 
 The analysis payload, UI, and reports now expose:
 
@@ -125,5 +150,10 @@ The analysis payload, UI, and reports now expose:
 - `reducer_mode`
 - `rate_fit_mode`
 - `ml_mode`
+- `risk_mode`
+- `life_interval_years`
+- `crossing_search_mode`
+- `ml_candidate_count`
+- `ml_blend_mode`
 - `warnings[]`
 - `fallback_flags[]`

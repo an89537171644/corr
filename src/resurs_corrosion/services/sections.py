@@ -149,6 +149,8 @@ def evaluate_effective_section(
         leg_horizontal = float(section.leg_horizontal_mm)
         leg_vertical = float(section.leg_vertical_mm)
         default_thickness = float(section.leg_thickness_mm)
+        confidence = EngineeringConfidenceLevel.B
+        warnings.append("Reducer для angle использует инженерную композиционную аппроксимацию и ограничен задачами остаточной оценки.")
         thickness, used_fallback, _ = _pick_min_with_source(
             effective_map,
             ["angle_leg", "angle_leg_horizontal", "angle_leg_vertical", "leg", "flange", "web"],
@@ -217,6 +219,7 @@ def evaluate_effective_section(
     if section.section_type == SectionType.TUBE:
         outer_diameter = float(section.outer_diameter_mm)
         default_wall = float(section.wall_thickness_mm)
+        warnings.append("Reducer tube интерпретируется как circular hollow section.")
         wall, used_fallback, _ = _pick_min_with_source(effective_map, ["tube_wall", "wall", "shell"], default_wall, "tube_wall")
         if used_fallback:
             warnings.append("Для tube reducer использована fallback-толщина стенки, так как роли зон не заданы явно.")

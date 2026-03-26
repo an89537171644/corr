@@ -2,7 +2,7 @@
 
 ## Purpose
 
-This note records the engineering verification scope for stage 2 section reducers.
+This note records the engineering verification scope for stage 2/3 section reducers.
 The goal is not to claim full SP 16 coverage, but to show that implemented
 reducers are checked against stable geometric reference cases and that fallback
 usage is not silent.
@@ -26,6 +26,12 @@ Each test verifies one or more of the following:
 - symmetric reducers preserve expected order of magnitude for `A`, `I`, and `W`
 - missing role mappings trigger warnings instead of silent geometry corruption
 - `generic_reduced` produces fallback flags and lowers confidence
+
+Stage 3 extends this with monotonicity checks in `tests/test_section_reducer_monotonicity.py`:
+
+- if effective thickness decreases, `A_eff`, `I_eff`, and `W_eff` may not increase
+- reference profiles are checked across `plate`, `i_section`, and `tube`
+- warning/confidence downgrade remains explicit for approximated reducers
 
 ## Reducer notes
 
@@ -65,8 +71,9 @@ Each test verifies one or more of the following:
 
 ## Acceptance signal
 
-Stage 2 acceptance relies on:
+Stage 2/3 acceptance relies on:
 
 - passing reducer regression tests
+- passing reducer monotonicity tests
 - warning propagation in API/report/UI
 - documentation explicitly stating that `generic_reduced` is not an invisible direct reducer

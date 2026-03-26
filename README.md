@@ -12,7 +12,9 @@ remaining service life.
 - Persisted analysis runs with retrieval endpoints and compatibility aliases requested in the remediation notes.
 - Inspection-driven `delta_obs` and `v_z` evaluation per zone from stored surveys.
 - Robust degradation-rate fitting with `baseline_fallback`, `single_observation`, `two_point`, and `robust_history_fit` modes.
+- Stage 3 degradation diagnostics with `robust_history_fit_low_confidence`, fit quality metrics, history span, and explicit outlier suppression warnings.
 - Hybrid degradation forecast that starts from the last observed state and applies an explicit staged rate-correction module.
+- Engineering uncertainty band reporting with `risk_mode`, `life_interval_years`, `uncertainty_basis`, and `uncertainty_warnings`.
 - Automatic engineering report generation in `DOCX`, `PDF`, `HTML`, and `Markdown` for stored analyses.
 - Import from `CSV/XLSX` for assets, elements with zones, and inspections with measurements.
 - Built-in browser UI served directly by FastAPI at `/`.
@@ -33,7 +35,8 @@ remaining service life.
   - axial tension
   - axial compression with a stability factor
   - major-axis bending
-- Engineering-basic combined axial force and bending interaction check.
+- engineering-basic combined axial force and bending interaction check
+- enhanced engineering combined axial force and bending interaction check with explicit slenderness-related inputs
 - Refined remaining-life search with coarse scan, local bracket, and monotone root refinement.
 - Analysis payload, reports, and UI now expose:
   - `engineering_confidence_level`
@@ -48,6 +51,7 @@ remaining service life.
 - Root project guidance in `AGENTS.md` and project-scoped Codex settings in `.codex/config.toml`.
 - Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/limitations.md`, `docs/section-verification.md`, `docs/data-normalization-roadmap.md`, and `docs/remediation_stage2.md`.
 - Pytest coverage for baseline formulas, API integration, reducers, rate fitting, refined limit-state search, combined checks, and report warnings.
+- Additional stage 3 regression coverage for enhanced resistance mode, uncertainty band, units normalization, reducer monotonicity, ML metadata, and report payload flags.
 
 ## Important assumptions in this first slice
 
@@ -57,10 +61,11 @@ remaining service life.
   share of tested scenarios that reach a limit state within the forecast horizon.
 - The hybrid forecast preserves a deterministic heuristic anchor and can evolve
   to trained candidate models, but it is still not a final calibrated field model.
+- The engineering uncertainty band is interval-based and not a full probabilistic reliability model.
 - For unsupported profiles, `generic_reduced` applies a conservative thickness
   reduction factor to user-supplied initial section properties and is surfaced as a fallback mode.
 - The MVP stores section, material, and action definitions as structured JSON
-  inside the element record to keep the data model flexible during early iteration; stage 2 adds schema-versioned validation and a normalization roadmap.
+  inside the element record to keep the data model flexible during early iteration; stages 2-3 add schema-versioned validation, expanded unit normalization, and a normalization roadmap.
 
 ## Quick start
 
@@ -177,10 +182,12 @@ The root route `/` now serves a lightweight web application with:
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/calculation-model.md](docs/calculation-model.md)
 - [docs/ml-pipeline.md](docs/ml-pipeline.md)
+- [docs/rate-fitting.md](docs/rate-fitting.md)
 - [docs/limitations.md](docs/limitations.md)
 - [docs/section-verification.md](docs/section-verification.md)
 - [docs/data-normalization-roadmap.md](docs/data-normalization-roadmap.md)
 - [docs/remediation_stage2.md](docs/remediation_stage2.md)
+- [docs/remediation_stage3.md](docs/remediation_stage3.md)
 - [docs/remediation_checklist.md](docs/remediation_checklist.md)
 
 ## Deployment note

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Tuple
 
@@ -37,6 +38,15 @@ class CapacityAssessment:
     utilization_ratio: Optional[float] = None
 
 
+@dataclass
+class CrossingResult:
+    remaining_life_years: Optional[float]
+    search_mode: str
+    bracket_width_years: Optional[float]
+    refinement_iterations: int
+    warnings: List[str] = field(default_factory=list)
+
+
 def check_axial_tension(section: SectionProperties, material: MaterialInput) -> ResistanceCheck:
     resistance = (section.area_mm2 * material.fy_mpa) / (material.gamma_m * 1000.0)
     return ResistanceCheck(
@@ -65,6 +75,48 @@ def check_bending_major_basic(section: SectionProperties, material: MaterialInpu
         unit="kN*m",
         resistance_mode=ResistanceMode.DIRECT,
         engineering_confidence_level=EngineeringConfidenceLevel.A,
+    )
+
+
+def check_axial_compression_enhanced(section: SectionProperties, material: MaterialInput, action: ActionInput) -> ResistanceCheck:
+    warnings: List[str] = []
+    confidence = EngineeringConfidenceLevel.B
+
+    if action.effective_length_mm is None:
+        basic = check_axial_compression_basic(section, material)
+        warnings = list(basic.warnings)
+        warnings.append("Enhanced compression path откатился к basic, так как effective_length_mm не задан.")
+        return ResistanceCheck(
+            resistance_value=basic.resistance_value,
+            unit=basic.unit,
+            resistance_mode=ResistanceMode.APPROXIMATE,
+            engineering_confidence_level=EngineeringConfidenceLevel.C,
+            warnings=warnings,
+        )
+
+    radius_of_gyration = math.sqrt(max(section.inertia_mm4, 1e-9) / max(section.area_mm2, 1e-9))
+    effective_length_factor = action.effective_length_factor if action.effective_length_factor is not None else 1.0
+    if action.effective_length_factor is None:
+        confidence = EngineeringConfidenceLevel.C
+        warnings.append("Для enhanced compression принят effective_length_factor=1.0 по умолчанию.")
+    if not action.support_condition:
+        confidence = EngineeringConfidenceLevel.C
+        warnings.append("Условия закрепления не заданы явно; slenderness-поправка носит инженерно-аппроксимированный характер.")
+
+    slenderness = (effective_length_factor * action.effective_length_mm) / max(radius_of_gyration, 1e-9)
+    elastic_modulus_mpa = 210_000.0
+    lambda_bar = slenderness * math.sqrt(material.fy_mpa / max((math.pi**2) * elastic_modulus_mpa, 1e-9))
+    chi = 1.0 / max(1.0 + (lambda_bar**2), 1e-9)
+    chi = max(0.15, min(1.0, min(chi, material.stability_factor)))
+    resistance = (chi * section.area_mm2 * material.fy_mpa) / (material.gamma_m * 1000.0)
+    warnings.append("Enhanced compression использует инженерную slenderness-редукцию и не является полным нормативным расчетом по СП 16.")
+
+    return ResistanceCheck(
+        resistance_value=resistance,
+        unit="kN",
+        resistance_mode=ResistanceMode.APPROXIMATE,
+        engineering_confidence_level=confidence,
+        warnings=warnings,
     )
 
 
@@ -104,6 +156,54 @@ def check_combined_axial_bending_basic(
     )
 
 
+def check_combined_axial_bending_enhanced(
+    section: SectionProperties,
+    material: MaterialInput,
+    action: ActionInput,
+    scenario_factor: float,
+    delta_years: float,
+) -> CapacityAssessment:
+    axial_value = scale_action_value(action.axial_force_value, scenario_factor, delta_years, action.demand_growth_factor_per_year)
+    moment_value = scale_action_value(action.bending_moment_value, scenario_factor, delta_years, action.demand_growth_factor_per_year)
+
+    if action.axial_force_kind == AxialForceKind.TENSION:
+        axial_check = check_axial_tension(section, material)
+        second_order_factor = action.moment_amplification_factor or 1.0
+        warnings = ["Enhanced combined path для растяжения использует прямое осевое сопротивление и инженерную проверку изгиба."]
+        confidence = EngineeringConfidenceLevel.B
+    else:
+        axial_check = check_axial_compression_enhanced(section, material, action)
+        radius_of_gyration = math.sqrt(max(section.inertia_mm4, 1e-9) / max(section.area_mm2, 1e-9))
+        if action.effective_length_mm:
+            effective_length_factor = action.effective_length_factor or 1.0
+            slenderness = (effective_length_factor * action.effective_length_mm) / max(radius_of_gyration, 1e-9)
+            second_order_factor = action.moment_amplification_factor or (1.0 + min(0.35, slenderness / 800.0))
+        else:
+            second_order_factor = action.moment_amplification_factor or 1.10
+        warnings = list(axial_check.warnings)
+        warnings.append("Enhanced combined path учитывает инженерную поправку второго порядка для сочетания N+M.")
+        confidence = axial_check.engineering_confidence_level
+
+    bending_check = check_bending_major_basic(section, material)
+    amplified_moment = moment_value * max(1.0, second_order_factor)
+    axial_ratio = axial_value / max(axial_check.resistance_value, 1e-9)
+    moment_ratio = amplified_moment / max(bending_check.resistance_value, 1e-9)
+    interaction_ratio = (0.85 * axial_ratio) + moment_ratio
+    warnings.append("Enhanced combined проверка является инженерно-аппроксимированной и не должна трактоваться как полный SP16 engine.")
+
+    return CapacityAssessment(
+        resistance_value=1.0,
+        resistance_unit="utilization",
+        demand_value=interaction_ratio,
+        demand_unit="utilization",
+        margin_value=1.0 - interaction_ratio,
+        resistance_mode=ResistanceMode.COMBINED_ENHANCED,
+        engineering_confidence_level=confidence,
+        warnings=warnings,
+        utilization_ratio=interaction_ratio,
+    )
+
+
 def calculate_resistance(section: SectionProperties, material: MaterialInput, action: ActionInput) -> Tuple[float, str]:
     if action.check_type == CheckType.AXIAL_TENSION:
         result = check_axial_tension(section, material)
@@ -114,11 +214,16 @@ def calculate_resistance(section: SectionProperties, material: MaterialInput, ac
     if action.check_type == CheckType.BENDING_MAJOR:
         result = check_bending_major_basic(section, material)
         return result.resistance_value, result.unit
+    if action.check_type == CheckType.COMBINED_AXIAL_BENDING_ENHANCED:
+        return 1.0, "utilization"
     return 1.0, "utilization"
 
 
 def calculate_demand(action: ActionInput, scenario_factor: float, delta_years: float) -> Tuple[float, str]:
-    if action.check_type == CheckType.COMBINED_AXIAL_BENDING_BASIC:
+    if action.check_type in (
+        CheckType.COMBINED_AXIAL_BENDING_BASIC,
+        CheckType.COMBINED_AXIAL_BENDING_ENHANCED,
+    ):
         raise ValueError("Use evaluate_margin() for combined axial-bending demand evaluation.")
 
     demand = scale_action_value(action.demand_value, scenario_factor, delta_years, action.demand_growth_factor_per_year)
@@ -137,6 +242,8 @@ def evaluate_margin(
 ) -> CapacityAssessment:
     if action.check_type == CheckType.COMBINED_AXIAL_BENDING_BASIC:
         return check_combined_axial_bending_basic(section, material, action, scenario_factor, delta_years)
+    if action.check_type == CheckType.COMBINED_AXIAL_BENDING_ENHANCED:
+        return check_combined_axial_bending_enhanced(section, material, action, scenario_factor, delta_years)
 
     if action.check_type == CheckType.AXIAL_TENSION:
         resistance_check = check_axial_tension(section, material)
@@ -169,15 +276,48 @@ def find_limit_state_crossing(
     margin_at_age: Optional[Callable[[float], float]] = None,
     refinement_iterations: int = 14,
 ) -> Optional[float]:
+    return find_limit_state_crossing_details(
+        timeline=timeline,
+        current_age_years=current_age_years,
+        margin_at_age=margin_at_age,
+        refinement_iterations=refinement_iterations,
+    ).remaining_life_years
+
+
+def find_limit_state_crossing_details(
+    timeline: List[TimelinePoint],
+    current_age_years: float,
+    margin_at_age: Optional[Callable[[float], float]] = None,
+    refinement_iterations: int = 14,
+) -> CrossingResult:
     if not timeline:
-        return None
+        return CrossingResult(
+            remaining_life_years=None,
+            search_mode="no_timeline",
+            bracket_width_years=None,
+            refinement_iterations=0,
+            warnings=["Временная диаграмма отсутствует; поиск предельного состояния не выполнен."],
+        )
 
     first = timeline[0]
     if first.margin_value <= 0:
-        return 0.0
+        return CrossingResult(
+            remaining_life_years=0.0,
+            search_mode="already_reached",
+            bracket_width_years=0.0,
+            refinement_iterations=0,
+        )
+
+    warnings: List[str] = []
+    positive_deltas = sum(
+        1 for previous, current in zip(timeline, timeline[1:]) if current.margin_value > previous.margin_value + 1e-6
+    )
+    if positive_deltas:
+        warnings.append("Кривая запаса несущей способности не является строго монотонной; conservative life следует интерпретировать с запасом.")
 
     for previous, current in zip(timeline, timeline[1:]):
         if previous.margin_value > 0 and current.margin_value <= 0:
+            bracket_width = current.age_years - previous.age_years
             if margin_at_age is None:
                 crossing_age = interpolate_crossing_age(
                     previous.age_years,
@@ -185,6 +325,8 @@ def find_limit_state_crossing(
                     previous.margin_value,
                     current.margin_value,
                 )
+                mode = "coarse_bracket_linear"
+                iterations = 0
             else:
                 crossing_age = refine_limit_state_crossing(
                     left_age=previous.age_years,
@@ -194,10 +336,24 @@ def find_limit_state_crossing(
                     margin_at_age=margin_at_age,
                     iterations=refinement_iterations,
                 )
+                mode = "coarse_bracket_refined"
+                iterations = refinement_iterations
 
-            return max(0.0, crossing_age - current_age_years)
+            return CrossingResult(
+                remaining_life_years=max(0.0, crossing_age - current_age_years),
+                search_mode=mode,
+                bracket_width_years=bracket_width,
+                refinement_iterations=iterations,
+                warnings=warnings,
+            )
 
-    return None
+    return CrossingResult(
+        remaining_life_years=None,
+        search_mode="no_crossing_within_horizon",
+        bracket_width_years=None,
+        refinement_iterations=0,
+        warnings=warnings,
+    )
 
 
 def interpolate_crossing_age(left_age: float, right_age: float, left_margin: float, right_margin: float) -> float:

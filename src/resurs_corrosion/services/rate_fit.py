@@ -23,6 +23,11 @@ class RateFitResult:
     rate_confidence: float
     fit_mode: RateFitMode
     used_points_count: int
+    fit_sample_size: int
+    effective_weight_sum: float
+    fit_rmse: float
+    fit_r2_like: float
+    history_span_years: float
     warnings: List[str] = field(default_factory=list)
 
 
@@ -36,6 +41,11 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.0,
             fit_mode=RateFitMode.BASELINE_FALLBACK,
             used_points_count=0,
+            fit_sample_size=0,
+            effective_weight_sum=0.0,
+            fit_rmse=0.0,
+            fit_r2_like=0.0,
+            history_span_years=0.0,
             warnings=["История обследований отсутствует; использована baseline-модель."],
         )
 
@@ -50,6 +60,11 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.35,
             fit_mode=RateFitMode.SINGLE_OBSERVATION,
             used_points_count=1,
+            fit_sample_size=1,
+            effective_weight_sum=point_weight(point, point.age_years, 0.0),
+            fit_rmse=0.0,
+            fit_r2_like=1.0,
+            history_span_years=max(point.age_years, 0.0),
             warnings=["Скорость деградации оценена по одному обследованию."],
         )
 
@@ -66,6 +81,11 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
             rate_confidence=0.55,
             fit_mode=RateFitMode.TWO_POINT,
             used_points_count=2,
+            fit_sample_size=2,
+            effective_weight_sum=point_weight(previous, current.age_years, delta_years) + point_weight(current, current.age_years, delta_years),
+            fit_rmse=0.0,
+            fit_r2_like=1.0,
+            history_span_years=delta_years,
             warnings=["Скорость деградации оценена по двум последним обследованиям."],
         )
 
@@ -75,10 +95,12 @@ def infer_degradation_rate(points: Sequence[RateFitPoint], baseline_rate_value: 
 def robust_history_fit(points: Sequence[RateFitPoint], baseline_rate_value: float) -> RateFitResult:
     xs = [float(point.age_years) for point in points]
     ys = [max(0.0, float(point.observed_loss_mm)) for point in points]
-    base_weights = [point_weight(point) for point in points]
+    span_years = max(xs) - min(xs)
+    latest_age = max(xs)
+    base_weights = [point_weight(point, latest_age, span_years) for point in points]
     warnings: List[str] = []
 
-    slope = robust_pairwise_slope(xs, ys, base_weights)
+    slope = robust_increment_slope(xs, ys, base_weights)
     intercept = weighted_median([y - (slope * x) for x, y in zip(xs, ys)], base_weights)
     residuals = [y - (intercept + (slope * x)) for x, y in zip(xs, ys)]
     scale = robust_scale(residuals)
@@ -88,40 +110,60 @@ def robust_history_fit(points: Sequence[RateFitPoint], baseline_rate_value: floa
         if strong_suppression:
             warnings.append("При оценке скорости подавлены выбросы в истории обследований.")
         fit_weights = [base * robust for base, robust in zip(base_weights, robust_weights)]
-        if not strong_suppression:
-            slope, intercept = weighted_linear_fit(xs, ys, fit_weights)
-        else:
+        if sum(fit_weights) > 0:
+            if strong_suppression:
+                slope = robust_increment_slope(xs, ys, fit_weights)
+            else:
+                slope, _ = weighted_linear_fit(xs, ys, fit_weights)
             intercept = weighted_median([y - (slope * x) for x, y in zip(xs, ys)], fit_weights)
     else:
         fit_weights = list(base_weights)
 
     residuals = [y - (intercept + (slope * x)) for x, y in zip(xs, ys)]
     slope = max(0.0, slope)
-    span_years = max(xs) - min(xs)
     if span_years <= 1e-6:
         fallback_rate = max(0.0, ys[-1] / max(xs[-1], 1e-6))
         warnings.append("Временной диапазон обследований недостаточен; использована упрощенная оценка скорости.")
         slope = fallback_rate
+        span_years = 0.0
 
     slope_std = estimate_slope_std(xs, residuals, fit_weights)
     band = max(1.96 * slope_std, 0.08 * max(slope, 1e-6), 0.04 * max(baseline_rate_value, 1e-6))
     confidence = robust_fit_confidence(points, residuals, span_years)
+    rmse = math.sqrt(sum(weight * (residual**2) for weight, residual in zip(fit_weights, residuals)) / max(sum(fit_weights), 1e-9))
+    r2_like = compute_weighted_r2_like(xs, ys, fit_weights, intercept, slope)
+    fit_mode = RateFitMode.ROBUST_HISTORY_FIT
+    if confidence < 0.55 or span_years < 2.0 or r2_like < 0.25:
+        fit_mode = RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE
+        warnings.append("Робастная аппроксимация истории выполнена в режиме пониженной достоверности.")
+    if slope <= 1e-9 and any((ys[index + 1] - ys[index]) < 0 for index in range(len(ys) - 1)):
+        warnings.append("История наблюдений содержит локальное уменьшение потерь; прогнозная скорость ограничена неотрицательным значением.")
 
     return RateFitResult(
         v_mean=slope,
         v_lower=max(0.0, slope - band),
         v_upper=slope + band,
         rate_confidence=confidence,
-        fit_mode=RateFitMode.ROBUST_HISTORY_FIT,
+        fit_mode=fit_mode,
         used_points_count=len(points),
+        fit_sample_size=len(points),
+        effective_weight_sum=sum(fit_weights),
+        fit_rmse=rmse,
+        fit_r2_like=r2_like,
+        history_span_years=span_years,
         warnings=warnings,
     )
 
 
-def point_weight(point: RateFitPoint) -> float:
+def point_weight(point: RateFitPoint, latest_age: float, span_years: float) -> float:
     quality = max(0.05, min(1.0, float(point.average_quality)))
     measurement_weight = math.sqrt(max(1, int(point.measurement_count)))
-    return quality * measurement_weight
+    if span_years <= 1e-9:
+        recency_weight = 1.0
+    else:
+        normalized_age = max(0.0, min(1.0, (float(point.age_years) - (latest_age - span_years)) / span_years))
+        recency_weight = 0.65 + (0.35 * normalized_age)
+    return quality * measurement_weight * recency_weight
 
 
 def weighted_linear_fit(xs: Sequence[float], ys: Sequence[float], weights: Sequence[float]) -> tuple[float, float]:
@@ -158,6 +200,21 @@ def robust_pairwise_slope(xs: Sequence[float], ys: Sequence[float], weights: Seq
 
     if not slopes:
         return 0.0
+    return max(0.0, weighted_median(slopes, slope_weights))
+
+
+def robust_increment_slope(xs: Sequence[float], ys: Sequence[float], weights: Sequence[float]) -> float:
+    slopes: List[float] = []
+    slope_weights: List[float] = []
+    for index in range(len(xs) - 1):
+        delta_x = xs[index + 1] - xs[index]
+        if abs(delta_x) <= 1e-12:
+            continue
+        slopes.append((ys[index + 1] - ys[index]) / delta_x)
+        slope_weights.append(0.5 * (max(weights[index], 1e-6) + max(weights[index + 1], 1e-6)) * delta_x)
+
+    if not slopes:
+        return robust_pairwise_slope(xs, ys, weights)
     return max(0.0, weighted_median(slopes, slope_weights))
 
 
@@ -210,3 +267,21 @@ def robust_fit_confidence(points: Sequence[RateFitPoint], residuals: Sequence[fl
     residual_penalty = min(1.0, rmse / max(mean_loss, 0.25))
     confidence = 0.35 + (0.30 * point_factor) + (0.20 * span_factor) - (0.20 * residual_penalty)
     return max(0.25, min(0.95, confidence))
+
+
+def compute_weighted_r2_like(
+    xs: Sequence[float],
+    ys: Sequence[float],
+    weights: Sequence[float],
+    intercept: float,
+    slope: float,
+) -> float:
+    total_weight = sum(weights)
+    if total_weight <= 0:
+        return 0.0
+    y_bar = sum(weight * y for weight, y in zip(weights, ys)) / total_weight
+    rss = sum(weight * ((y - (intercept + (slope * x))) ** 2) for weight, x, y in zip(weights, xs, ys))
+    tss = sum(weight * ((y - y_bar) ** 2) for weight, y in zip(weights, ys))
+    if tss <= 1e-12:
+        return 1.0
+    return max(0.0, min(1.0, 1.0 - (rss / tss)))

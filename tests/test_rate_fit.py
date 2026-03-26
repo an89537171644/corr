@@ -51,8 +51,8 @@ def test_rate_fit_robust_history_suppresses_outlier() -> None:
 
     result = infer_degradation_rate(points, baseline_rate_value=0.1)
 
-    assert result.fit_mode == RateFitMode.ROBUST_HISTORY_FIT
+    assert result.fit_mode == RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE
     assert result.used_points_count == 4
     assert 0.08 <= result.v_mean <= 0.2
     assert result.v_lower <= result.v_mean <= result.v_upper
-    assert any("выброс" in warning for warning in result.warnings)
+    assert any("выброс" in warning.lower() for warning in result.warnings)

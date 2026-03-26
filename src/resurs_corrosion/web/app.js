@@ -535,6 +535,13 @@ function buildElementPayload() {
     action: {
       check_type: form.get("check_type"),
       demand_value: numberOrNull(form.get("demand_value")),
+      axial_force_kind: blankToNull(form.get("axial_force_kind")),
+      axial_force_value: numberOrNull(form.get("axial_force_value")),
+      bending_moment_value: numberOrNull(form.get("bending_moment_value")),
+      effective_length_mm: numberOrNull(form.get("effective_length_mm")),
+      effective_length_factor: numberOrNull(form.get("effective_length_factor")),
+      support_condition: blankToNull(form.get("support_condition")),
+      moment_amplification_factor: numberOrNull(form.get("moment_amplification_factor")),
       demand_growth_factor_per_year: numberOrNull(form.get("demand_growth_factor_per_year")) ?? 0,
     },
   });
@@ -623,16 +630,22 @@ function renderCalculationResult(result) {
     <article class="summary-card"><span>Режим редьюсера</span><strong>${renderStatusPill(translateReducerMode(result.reducer_mode), toneForReducerMode(result.reducer_mode))}</strong></article>
     <article class="summary-card"><span>Оценка скорости</span><strong>${renderStatusPill(translateRateFitMode(result.rate_fit_mode), toneForRateFitMode(result.rate_fit_mode))}</strong></article>
     <article class="summary-card"><span>Режим ML</span><strong>${renderStatusPill(translateMlMode(result.ml_mode), toneForMlMode(result.ml_mode))}</strong></article>
+    <article class="summary-card"><span>Режим риска</span><strong>${renderStatusPill(translateRiskMode(result.risk_mode), toneForRiskMode(result.risk_mode))}</strong></article>
+    <article class="summary-card"><span>Интервал ресурса</span><strong>${formatLifeInterval(result.life_interval_years)}</strong></article>
+    <article class="summary-card"><span>Поиск предельного состояния</span><strong>${escapeHtml(translateCrossingMode(result.crossing_search_mode))}</strong></article>
+    <article class="summary-card"><span>ML metadata</span><strong>${result.ml_candidate_count} | ${escapeHtml(result.ml_blend_mode || "-")}</strong></article>
     <article class="summary-card"><span>Использовано данных</span><strong>${result.used_inspection_count} обслед. / ${result.used_measurement_count} замеров</strong></article>
     <article class="summary-card"><span>Следующее обследование</span><strong>${formatNumber(result.risk_profile.next_inspection_within_years, 2)} лет</strong></article>
     <article class="summary-card"><span>Рекомендация</span><strong>${escapeHtml(result.risk_profile.recommended_action)}</strong></article>
+    <article class="summary-card summary-card-wide"><span>Основания uncertainty band</span><strong>${escapeHtml((result.uncertainty_basis || []).join("; ") || "-")}</strong></article>
     ${renderWarningCard("Ограничения и предупреждения", result.warnings, result.fallback_flags, "Явные warning/fallback-флаги не зарегистрированы.")}
+    ${renderWarningCard("Неопределенность и риск", result.uncertainty_warnings, [], "Дополнительные uncertainty warnings не зарегистрированы.")}
   `;
 
   refs.scenarioTable.classList.remove("empty-block");
   refs.scenarioTable.innerHTML = `
     <table class="table">
-      <thead><tr><th>Сценарий</th><th>Несущая способность</th><th>Воздействие</th><th>Запас</th><th>Остаточный ресурс</th><th>Режимы</th><th>Предупреждения</th><th>Состояние</th></tr></thead>
+      <thead><tr><th>Сценарий</th><th>Несущая способность</th><th>Воздействие</th><th>Запас</th><th>Остаточный ресурс</th><th>Поиск</th><th>Режимы</th><th>Предупреждения</th><th>Состояние</th></tr></thead>
       <tbody>
         ${result.results.map((row) => `
           <tr>
@@ -640,7 +653,8 @@ function renderCalculationResult(result) {
             <td>${formatNumber(row.resistance_value, 3)} ${escapeHtml(row.resistance_unit)}</td>
             <td>${formatNumber(row.demand_value, 3)} ${escapeHtml(row.demand_unit)}</td>
             <td>${formatNumber(row.margin_value, 3)}</td>
-            <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} лет`}</td>
+            <td>${renderLifeCell(row)}</td>
+            <td>${escapeHtml(translateCrossingMode(row.crossing_search_mode))}<br><small>${row.crossing_refinement_iterations || 0} ит.</small></td>
             <td>${renderScenarioModes(row)}</td>
             <td>${renderScenarioWarnings(row)}</td>
             <td>${row.limit_state_reached_within_horizon ? "Достигнуто" : "Не достигнуто"}</td>
@@ -679,13 +693,14 @@ function renderReportPreview() {
   const scenarioTable = previewResult
     ? `
       <table class="table">
-        <thead><tr><th>Сценарий</th><th>Запас</th><th>Остаточный ресурс</th><th>Состояние</th></tr></thead>
+        <thead><tr><th>Сценарий</th><th>Запас</th><th>Остаточный ресурс</th><th>Поиск</th><th>Состояние</th></tr></thead>
         <tbody>
           ${previewResult.results.map((row) => `
             <tr>
               <td>${escapeHtml(row.scenario_name)}</td>
               <td>${formatNumber(row.margin_value, 3)}</td>
-              <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} лет`}</td>
+              <td>${renderLifeCell(row)}</td>
+              <td>${escapeHtml(translateCrossingMode(row.crossing_search_mode))}</td>
               <td>${row.limit_state_reached_within_horizon ? "Достигнуто" : "Не достигнуто"}</td>
             </tr>
           `).join("")}
@@ -710,6 +725,8 @@ function renderReportPreview() {
       <article class="summary-card"><span>База обследований</span><strong>${escapeHtml(latestInspection ? latestInspection.inspection_code || `обследование-${latestInspection.id}` : "Обследования отсутствуют")}</strong></article>
       <article class="summary-card"><span>Рекомендованное действие</span><strong>${escapeHtml(previewResult ? previewResult.risk_profile.recommended_action : "Расчет еще не выполнен")}</strong></article>
       <article class="summary-card"><span>Класс уверенности</span><strong>${previewResult ? renderStatusPill(`Класс ${escapeHtml(previewResult.engineering_confidence_level)}`, toneForConfidence(previewResult.engineering_confidence_level)) : "Ожидает расчет"}</strong></article>
+      <article class="summary-card"><span>Режим риска</span><strong>${previewResult ? renderStatusPill(translateRiskMode(previewResult.risk_mode), toneForRiskMode(previewResult.risk_mode)) : "Ожидает расчет"}</strong></article>
+      <article class="summary-card"><span>Интервал ресурса</span><strong>${previewResult ? formatLifeInterval(previewResult.life_interval_years) : "Ожидает расчет"}</strong></article>
       <article class="summary-card"><span>Режимы</span><strong>${previewResult ? renderModeStack([
         { label: translateForecastMode(previewResult.forecast_mode), tone: toneForForecastMode(previewResult.forecast_mode) },
         { label: translateResistanceMode(previewResult.resistance_mode), tone: toneForResistanceMode(previewResult.resistance_mode) },
@@ -742,6 +759,8 @@ function renderReportPreview() {
         <div class="preview-line"><strong>Режим редьюсера</strong><span>${previewResult ? escapeHtml(translateReducerMode(previewResult.reducer_mode)) : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>Оценка скорости</strong><span>${previewResult ? escapeHtml(translateRateFitMode(previewResult.rate_fit_mode)) : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>Режим ML</strong><span>${previewResult ? escapeHtml(translateMlMode(previewResult.ml_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Поиск предельного состояния</strong><span>${previewResult ? escapeHtml(translateCrossingMode(previewResult.crossing_search_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Основания uncertainty band</strong><span>${previewResult ? escapeHtml((previewResult.uncertainty_basis || []).join("; ") || "-") : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>История данных</strong><span>${previewResult ? `${previewResult.used_inspection_count} обслед. / ${previewResult.used_measurement_count} замеров` : "Ожидает расчет"}</span></div>
       </section>
     </div>
@@ -755,7 +774,23 @@ function renderReportPreview() {
         ? renderWarningPanel(previewResult.warnings, previewResult.fallback_flags, "В текущем снимке явные warning/fallback-флаги не зафиксированы.")
         : '<p class="muted-state">После расчета здесь появятся ограничения применимости и предупреждения stage 2.</p>'}
     </section>
+    <section class="preview-section">
+      <h3>Неопределенность и риск</h3>
+      ${previewResult
+        ? renderWarningPanel(previewResult.uncertainty_warnings, [], "Дополнительные uncertainty warnings не зарегистрированы.")
+        : '<p class="muted-state">После расчета здесь появятся замечания по uncertainty band и интервалу ресурса.</p>'}
+    </section>
   `;
+}
+
+function renderLifeCell(row) {
+  const interval = formatLifeInterval(row.life_interval_years);
+  const nominal = formatMaybeNumber(row.remaining_life_nominal_years, 2);
+  const conservative = formatMaybeNumber(row.remaining_life_conservative_years, 2);
+  if (interval === "-" && nominal === "-" && conservative === "-") {
+    return "-";
+  }
+  return `${interval}<br><small>ном. ${nominal} / конс. ${conservative}</small>`;
 }
 
 function renderScenarioModes(row) {
@@ -769,6 +804,7 @@ function renderScenarioModes(row) {
 function renderScenarioWarnings(row) {
   const items = [
     ...(row.warnings || []).map((warning) => `Предупреждение: ${warning}`),
+    ...(row.uncertainty_warnings || []).map((warning) => `Uncertainty: ${warning}`),
     ...((row.fallback_flags || []).map((flag) => `Fallback: ${translateFallbackFlag(flag)}`)),
   ];
   if (!items.length) {
@@ -816,6 +852,7 @@ function translateResistanceMode(mode) {
   if (mode === "direct") return "Прямой";
   if (mode === "approximate") return "Приближенный";
   if (mode === "combined_basic") return "Комбинированный basic";
+  if (mode === "combined_enhanced") return "Комбинированный enhanced";
   return mode || "-";
 }
 
@@ -827,9 +864,26 @@ function translateReducerMode(mode) {
 
 function translateRateFitMode(mode) {
   if (mode === "robust_history_fit") return "Робастная история";
+  if (mode === "robust_history_fit_low_confidence") return "Робастная история (low confidence)";
   if (mode === "two_point") return "Две точки";
   if (mode === "single_observation") return "Одно обследование";
   if (mode === "baseline_fallback") return "Базовый fallback";
+  return mode || "-";
+}
+
+function translateRiskMode(mode) {
+  if (mode === "engineering_uncertainty_band") return "Инженерный uncertainty band";
+  if (mode === "scenario_risk") return "Сценарный риск";
+  return mode || "-";
+}
+
+function translateCrossingMode(mode) {
+  if (mode === "no_timeline") return "Нет временной диаграммы";
+  if (mode === "already_reached") return "Уже достигнуто";
+  if (mode === "coarse_bracket_linear") return "Линейная интерполяция";
+  if (mode === "coarse_bracket_refined") return "Уточненный поиск";
+  if (mode === "no_crossing_within_horizon") return "В горизонте не найдено";
+  if (mode === "coarse_only") return "Грубая оценка";
   return mode || "-";
 }
 
@@ -869,6 +923,8 @@ function toneForForecastMode(mode) {
 
 function toneForResistanceMode(mode) {
   if (mode === "direct") return "ok";
+  if (mode === "combined_enhanced") return "neutral";
+  if (mode === "combined_basic") return "warn";
   if (mode === "approximate") return "warn";
   return "danger";
 }
@@ -880,9 +936,16 @@ function toneForReducerMode(mode) {
 
 function toneForRateFitMode(mode) {
   if (mode === "robust_history_fit") return "ok";
+  if (mode === "robust_history_fit_low_confidence") return "warn";
   if (mode === "two_point") return "neutral";
   if (mode === "single_observation") return "warn";
   return "danger";
+}
+
+function toneForRiskMode(mode) {
+  if (mode === "engineering_uncertainty_band") return "warn";
+  if (mode === "scenario_risk") return "neutral";
+  return "neutral";
 }
 
 function toneForMlMode(mode) {
@@ -1037,6 +1100,13 @@ function populateElementForm(element) {
   setFormValue(refs.elementForm, "stability_factor", element.material.stability_factor);
   setFormValue(refs.elementForm, "check_type", element.action.check_type);
   setFormValue(refs.elementForm, "demand_value", element.action.demand_value);
+  setFormValue(refs.elementForm, "axial_force_kind", element.action.axial_force_kind);
+  setFormValue(refs.elementForm, "axial_force_value", element.action.axial_force_value);
+  setFormValue(refs.elementForm, "bending_moment_value", element.action.bending_moment_value);
+  setFormValue(refs.elementForm, "effective_length_mm", element.action.effective_length_mm);
+  setFormValue(refs.elementForm, "effective_length_factor", element.action.effective_length_factor);
+  setFormValue(refs.elementForm, "support_condition", element.action.support_condition);
+  setFormValue(refs.elementForm, "moment_amplification_factor", element.action.moment_amplification_factor);
   setFormValue(refs.elementForm, "demand_growth_factor_per_year", element.action.demand_growth_factor_per_year);
   refs.zoneRows.innerHTML = "";
   element.zones.forEach((zone) => addZoneRow(zone));
@@ -1240,6 +1310,14 @@ function formatNumber(value, digits) {
 
 function formatMaybeNumber(value, digits) {
   return value == null ? "-" : Number(value).toFixed(digits);
+}
+
+function formatLifeInterval(interval) {
+  if (!interval) return "-";
+  const lower = formatMaybeNumber(interval.lower_years, 2);
+  const upper = formatMaybeNumber(interval.upper_years, 2);
+  if (lower === "-" && upper === "-") return "-";
+  return `[${lower}; ${upper}] лет`;
 }
 
 function formatBytes(bytes) {

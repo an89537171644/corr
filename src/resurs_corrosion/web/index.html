@@ -214,11 +214,44 @@
                     <option value="axial_tension">растяжение</option>
                     <option value="axial_compression">сжатие</option>
                     <option value="bending_major" selected>изгиб по главной оси</option>
+                    <option value="combined_axial_bending_basic">комбинированная basic</option>
+                    <option value="combined_axial_bending_enhanced">комбинированная enhanced</option>
                   </select>
                 </label>
                 <label>
                   <span>Расчетное усилие</span>
                   <input name="demand_value" type="number" step="0.001" value="110">
+                </label>
+                <label>
+                  <span>Тип продольной силы</span>
+                  <select name="axial_force_kind">
+                    <option value="compression" selected>сжатие</option>
+                    <option value="tension">растяжение</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Продольная сила, кН</span>
+                  <input name="axial_force_value" type="number" step="0.001">
+                </label>
+                <label>
+                  <span>Изгибающий момент, кН*м</span>
+                  <input name="bending_moment_value" type="number" step="0.001">
+                </label>
+                <label>
+                  <span>Эффективная длина, мм</span>
+                  <input name="effective_length_mm" type="number" step="0.1">
+                </label>
+                <label>
+                  <span>Коэффициент приведенной длины</span>
+                  <input name="effective_length_factor" type="number" step="0.001">
+                </label>
+                <label>
+                  <span>Условие закрепления</span>
+                  <input name="support_condition">
+                </label>
+                <label>
+                  <span>Коэффициент усиления момента</span>
+                  <input name="moment_amplification_factor" type="number" step="0.001">
                 </label>
                 <label>
                   <span>Рост нагрузки в год</span>

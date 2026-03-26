@@ -342,6 +342,11 @@ def build_inspection_payload(
 def build_section_definition(row: Dict[str, object]) -> SectionDefinition:
     return SectionDefinition(
         section_type=parse_section_type(require_text(row, "section_type")),
+        schema_version=optional_text(row, "section_schema_version") or "section.v2",
+        geometry_unit=optional_text(row, "geometry_unit") or "mm",
+        area_unit=optional_text(row, "area_unit") or "mm2",
+        inertia_unit=optional_text(row, "inertia_unit") or "mm4",
+        section_modulus_unit=optional_text(row, "section_modulus_unit") or "mm3",
         reference_thickness_mm=optional_float(row, "reference_thickness_mm"),
         width_mm=optional_float(row, "width_mm"),
         thickness_mm=optional_float(row, "thickness_mm"),
@@ -362,6 +367,8 @@ def build_section_definition(row: Dict[str, object]) -> SectionDefinition:
 
 def build_material_input(row: Dict[str, object]) -> MaterialInput:
     return MaterialInput(
+        schema_version=optional_text(row, "material_schema_version") or "material.v2",
+        stress_unit=optional_text(row, "stress_unit") or "MPa",
         fy_mpa=require_float(row, "fy_mpa"),
         gamma_m=optional_float(row, "gamma_m") or 1.0,
         stability_factor=optional_float(row, "stability_factor") or 1.0,
@@ -369,9 +376,22 @@ def build_material_input(row: Dict[str, object]) -> MaterialInput:
 
 
 def build_action_input(row: Dict[str, object]) -> ActionInput:
+    check_type = parse_check_type(require_text(row, "check_type"))
     return ActionInput(
-        check_type=parse_check_type(require_text(row, "check_type")),
-        demand_value=require_float(row, "demand_value"),
+        check_type=check_type,
+        schema_version=optional_text(row, "action_schema_version") or "action.v2",
+        force_unit=optional_text(row, "force_unit") or "kN",
+        moment_unit=optional_text(row, "moment_unit") or "kN*m",
+        length_unit=optional_text(row, "length_unit") or "mm",
+        growth_time_unit=optional_text(row, "growth_time_unit") or "year",
+        demand_value=require_float(row, "demand_value") if check_type not in {CheckType.COMBINED_AXIAL_BENDING_BASIC, CheckType.COMBINED_AXIAL_BENDING_ENHANCED} else optional_float(row, "demand_value"),
+        axial_force_value=optional_float(row, "axial_force_value"),
+        bending_moment_value=optional_float(row, "bending_moment_value"),
+        axial_force_kind=optional_text(row, "axial_force_kind") or "compression",
+        effective_length_mm=optional_float(row, "effective_length_mm"),
+        effective_length_factor=optional_float(row, "effective_length_factor"),
+        support_condition=optional_text(row, "support_condition"),
+        moment_amplification_factor=optional_float(row, "moment_amplification_factor"),
         demand_growth_factor_per_year=optional_float(row, "demand_growth_factor_per_year") or 0.0,
     )
 

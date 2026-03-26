@@ -224,6 +224,12 @@ def write_docx_report(context: ReportContext, file_path: Path) -> None:
         ["Зона", "Роль", "Наблюдаемая потеря, мм", "Прогнозная потеря, мм", "Скорость прогноза, мм/год", "Режим", "Эффективная толщина, мм"],
         build_zone_rows(context),
     )
+    document.add_heading("Диагностика скорости деградации", level=1)
+    add_docx_table(
+        document,
+        ["Зона", "Источник", "Режим fit", "n", "Сумма весов", "RMSE", "R2-like", "История, лет", "Интервал v"],
+        build_rate_diagnostic_rows(context),
+    )
 
     document.add_heading("Сравнение сценариев", level=1)
     add_docx_table(
@@ -231,6 +237,14 @@ def write_docx_report(context: ReportContext, file_path: Path) -> None:
         ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
         build_scenario_rows(context),
     )
+    document.add_heading("Диагностика остаточного ресурса", level=1)
+    add_docx_table(
+        document,
+        ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+        build_scenario_detail_rows(context),
+    )
+    document.add_heading("Неопределенность и риск", level=1)
+    add_docx_table(document, ["Параметр", "Значение"], build_uncertainty_rows(context))
 
     document.add_heading("Фрагмент временной диаграммы", level=1)
     add_docx_table(document, ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context))
@@ -282,12 +296,29 @@ def write_pdf_report(context: ReportContext, file_path: Path) -> None:
     )
     story.extend(
         build_pdf_section(
+            "Диагностика скорости деградации",
+            ["Зона", "Источник", "Режим fit", "n", "Сумма весов", "RMSE", "R2-like", "История, лет", "Интервал v"],
+            build_rate_diagnostic_rows(context),
+            styles,
+        )
+    )
+    story.extend(
+        build_pdf_section(
             "Сравнение сценариев",
             ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
             build_scenario_rows(context),
             styles,
         )
     )
+    story.extend(
+        build_pdf_section(
+            "Диагностика остаточного ресурса",
+            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+            build_scenario_detail_rows(context),
+            styles,
+        )
+    )
+    story.extend(build_pdf_section("Неопределенность и риск", ["Параметр", "Значение"], build_uncertainty_rows(context), styles))
     story.extend(build_pdf_section("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context), styles))
     story.extend(build_pdf_list_section("Ограничения применимости", build_limitation_lines(context), styles))
 
@@ -353,12 +384,30 @@ def build_markdown_report(context: ReportContext) -> str:
                 build_zone_rows(context),
             ),
             "",
+            "## Диагностика скорости деградации",
+            "",
+            render_markdown_table(
+                ["Зона", "Источник", "Режим fit", "n", "Сумма весов", "RMSE", "R2-like", "История, лет", "Интервал v"],
+                build_rate_diagnostic_rows(context),
+            ),
+            "",
             "## Сравнение сценариев",
             "",
             render_markdown_table(
                 ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
                 build_scenario_rows(context),
             ),
+            "",
+            "## Диагностика остаточного ресурса",
+            "",
+            render_markdown_table(
+                ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+                build_scenario_detail_rows(context),
+            ),
+            "",
+            "## Неопределенность и риск",
+            "",
+            render_markdown_table(["Параметр", "Значение"], build_uncertainty_rows(context)),
             "",
             "## Фрагмент временной диаграммы",
             "",
@@ -398,10 +447,21 @@ def build_html_report(context: ReportContext) -> str:
             build_zone_rows(context),
         ),
         (
+            "Диагностика скорости деградации",
+            ["Зона", "Источник", "Режим fit", "n", "Сумма весов", "RMSE", "R2-like", "История, лет", "Интервал v"],
+            build_rate_diagnostic_rows(context),
+        ),
+        (
             "Сравнение сценариев",
             ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
             build_scenario_rows(context),
         ),
+        (
+            "Диагностика остаточного ресурса",
+            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+            build_scenario_detail_rows(context),
+        ),
+        ("Неопределенность и риск", ["Параметр", "Значение"], build_uncertainty_rows(context)),
         ("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context)),
     ]
 
@@ -604,6 +664,65 @@ def build_scenario_rows(context: ReportContext) -> List[List[str]]:
     return rows
 
 
+def build_rate_diagnostic_rows(context: ReportContext) -> List[List[str]]:
+    rows: List[List[str]] = []
+    for observation in context.calculation_response.zone_observations:
+        rate_band = "-"
+        if observation.rate_lower_mm_per_year is not None or observation.rate_upper_mm_per_year is not None:
+            rate_band = (
+                f"{format_optional_number(observation.rate_lower_mm_per_year, 4)} .. "
+                f"{format_optional_number(observation.rate_upper_mm_per_year, 4)}"
+            )
+        rows.append(
+            [
+                observation.zone_id,
+                observation.source,
+                translate_rate_fit_mode(observation.rate_fit_mode),
+                str(observation.fit_sample_size or observation.used_points_count),
+                format_optional_number(observation.effective_weight_sum, 2),
+                format_optional_number(observation.fit_rmse, 4),
+                format_optional_number(observation.fit_r2_like, 3),
+                format_optional_number(observation.history_span_years, 2),
+                rate_band,
+            ]
+        )
+    return rows or [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
+
+
+def build_scenario_detail_rows(context: ReportContext) -> List[List[str]]:
+    rows: List[List[str]] = []
+    for result in context.calculation_response.results:
+        interval = format_life_interval(result.life_interval_years)
+        rows.append(
+            [
+                result.scenario_name,
+                format_optional_number(result.remaining_life_nominal_years, 2),
+                format_optional_number(result.remaining_life_conservative_years, 2),
+                interval,
+                translate_crossing_mode(result.crossing_search_mode),
+                format_optional_number(result.crossing_bracket_width_years, 2),
+                str(result.crossing_refinement_iterations),
+            ]
+        )
+    return rows or [["-", "-", "-", "-", "-", "-", "-"]]
+
+
+def build_uncertainty_rows(context: ReportContext) -> List[List[str]]:
+    response = context.calculation_response
+    return [
+        ["Режим риска", translate_risk_mode(response.risk_mode)],
+        ["Интервал остаточного ресурса", format_life_interval(response.life_interval_years)],
+        ["Номинальный ресурс, лет", format_optional_number(response.life_interval_years.nominal_years, 2)],
+        ["Консервативный ресурс, лет", format_optional_number(response.life_interval_years.conservative_years, 2)],
+        ["Режим поиска предельного состояния", translate_crossing_mode(response.crossing_search_mode)],
+        ["ML candidates", str(response.ml_candidate_count)],
+        ["ML blend mode", response.ml_blend_mode],
+        ["ML interval source", response.ml_interval_source],
+        ["Основания uncertainty band", "; ".join(response.uncertainty_basis) or "-"],
+        ["Предупреждения uncertainty band", "; ".join(response.uncertainty_warnings) or "-"],
+    ]
+
+
 def build_timeline_rows(context: ReportContext) -> List[List[str]]:
     baseline = context.calculation_response.results[0]
     sampled_timeline = sample_timeline(baseline.timeline, MAX_TIMELINE_ROWS)
@@ -647,6 +766,12 @@ def build_limitation_lines(context: ReportContext) -> List[str]:
             "Несущая способность определялась в режиме combined_basic. "
             "Использовано базовое интеракционное соотношение N/Nrd + M/Mrd <= 1.0, а не полный нормативный расчет по СП 16."
         )
+    elif response.resistance_mode == ResistanceMode.COMBINED_ENHANCED:
+        lines.append(
+            "Несущая способность определялась в режиме combined_enhanced. "
+            "Использована инженерно-аппроксимированная комбинированная проверка с учетом продольной силы, изгиба и поправок второго порядка, "
+            "но не полный нормативный расчет по СП 16."
+        )
 
     if response.rate_fit_mode == RateFitMode.BASELINE_FALLBACK:
         lines.append(
@@ -662,6 +787,11 @@ def build_limitation_lines(context: ReportContext) -> List[str]:
         lines.append(
             "Скорость деградации оценена по двум точкам истории обследований. "
             "Тренд является приближенным и чувствителен к качеству замеров."
+        )
+    elif response.rate_fit_mode == RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE:
+        lines.append(
+            "Робастная аппроксимация истории обследований выполнена в режиме пониженной достоверности. "
+            "Результат пригоден как инженерный ориентир, но требует осторожной интерпретации."
         )
 
     if response.ml_mode == "heuristic":
@@ -863,9 +993,22 @@ def format_optional_number(value: Optional[float], digits: int) -> str:
     return format_number(value, digits)
 
 
+def format_life_interval(interval) -> str:
+    if interval is None:
+        return "-"
+    lower = format_optional_number(getattr(interval, "lower_years", None), 2)
+    upper = format_optional_number(getattr(interval, "upper_years", None), 2)
+    if lower == "-" and upper == "-":
+        return "-"
+    return f"[{lower}; {upper}]"
+
+
 def build_action_rows(request: CalculationRequest) -> List[List[str]]:
     rows = [["Тип проверки", translate_check_type(request.action.check_type)]]
-    if request.action.check_type == CheckType.COMBINED_AXIAL_BENDING_BASIC:
+    if request.action.check_type in (
+        CheckType.COMBINED_AXIAL_BENDING_BASIC,
+        CheckType.COMBINED_AXIAL_BENDING_ENHANCED,
+    ):
         rows.extend(
             [
                 ["Тип продольной силы", translate_axial_force_kind(request.action.axial_force_kind)],
@@ -873,6 +1016,43 @@ def build_action_rows(request: CalculationRequest) -> List[List[str]]:
                 ["Изгибающий момент", format_optional_number(request.action.bending_moment_value, 3)],
             ]
         )
+        if request.action.check_type == CheckType.COMBINED_AXIAL_BENDING_ENHANCED:
+            rows.extend(
+                [
+                    ["Р­С„С„РµРєС‚РёРІРЅР°СЏ РґР»РёРЅР°", format_optional_number(request.action.effective_length_mm, 1)],
+                    ["РљРѕСЌС„С„РёС†РёРµРЅС‚ РїСЂРёРІРµРґРµРЅРЅРѕР№ РґР»РёРЅС‹", format_optional_number(request.action.effective_length_factor, 3)],
+                    ["РЈСЃР»РѕРІРёРµ Р·Р°РєСЂРµРїР»РµРЅРёСЏ", request.action.support_condition or "-"],
+                    ["РљРѕСЌС„С„РёС†РёРµРЅС‚ СѓСЃРёР»РµРЅРёСЏ РјРѕРјРµРЅС‚Р°", format_optional_number(request.action.moment_amplification_factor, 3)],
+                ]
+            )
+    else:
+        rows.append(["Расчетное воздействие", format_optional_number(request.action.demand_value, 3)])
+    rows.append(["Рост воздействия в год", format_number(request.action.demand_growth_factor_per_year, 4)])
+    return rows
+
+
+def build_action_rows(request: CalculationRequest) -> List[List[str]]:
+    rows = [["Тип проверки", translate_check_type(request.action.check_type)]]
+    if request.action.check_type in (
+        CheckType.COMBINED_AXIAL_BENDING_BASIC,
+        CheckType.COMBINED_AXIAL_BENDING_ENHANCED,
+    ):
+        rows.extend(
+            [
+                ["Тип продольной силы", translate_axial_force_kind(request.action.axial_force_kind)],
+                ["Продольная сила", format_optional_number(request.action.axial_force_value, 3)],
+                ["Изгибающий момент", format_optional_number(request.action.bending_moment_value, 3)],
+            ]
+        )
+        if request.action.check_type == CheckType.COMBINED_AXIAL_BENDING_ENHANCED:
+            rows.extend(
+                [
+                    ["Эффективная длина", format_optional_number(request.action.effective_length_mm, 1)],
+                    ["Коэффициент приведенной длины", format_optional_number(request.action.effective_length_factor, 3)],
+                    ["Условие закрепления", request.action.support_condition or "-"],
+                    ["Коэффициент усиления момента", format_optional_number(request.action.moment_amplification_factor, 3)],
+                ]
+            )
     else:
         rows.append(["Расчетное воздействие", format_optional_number(request.action.demand_value, 3)])
     rows.append(["Рост воздействия в год", format_number(request.action.demand_growth_factor_per_year, 4)])
@@ -886,6 +1066,7 @@ def translate_check_type(check_type: CheckType) -> str:
         CheckType.BENDING_MAJOR: "bending_major - изгиб по главной оси",
         CheckType.COMBINED_AXIAL_BENDING_BASIC: "combined_axial_bending_basic - базовая комбинированная проверка",
     }
+    mapping[CheckType.COMBINED_AXIAL_BENDING_ENHANCED] = "combined_axial_bending_enhanced - усиленная комбинированная проверка"
     return mapping[check_type]
 
 
@@ -923,6 +1104,7 @@ def translate_resistance_mode(mode: ResistanceMode | str) -> str:
         ResistanceMode.APPROXIMATE.value: "approximate - приближенная инженерная проверка",
         ResistanceMode.COMBINED_BASIC.value: "combined_basic - базовая комбинированная проверка",
     }
+    mapping[ResistanceMode.COMBINED_ENHANCED.value] = "combined_enhanced - усиленная комбинированная проверка"
     return mapping.get(normalized, normalized)
 
 
@@ -942,8 +1124,30 @@ def translate_rate_fit_mode(mode: RateFitMode | str) -> str:
         RateFitMode.SINGLE_OBSERVATION.value: "single_observation - одно обследование",
         RateFitMode.TWO_POINT.value: "two_point - две точки истории",
         RateFitMode.ROBUST_HISTORY_FIT.value: "robust_history_fit - робастная аппроксимация истории 3+ точек",
+        RateFitMode.ROBUST_HISTORY_FIT_LOW_CONFIDENCE.value: "robust_history_fit_low_confidence - робастная аппроксимация с пониженной уверенностью",
     }
     return mapping.get(normalized, normalized)
+
+
+def translate_risk_mode(mode) -> str:
+    normalized = mode.value if hasattr(mode, "value") else str(mode)
+    if normalized == "engineering_uncertainty_band":
+        return "engineering_uncertainty_band - инженерный интервал неопределенности"
+    if normalized == "scenario_risk":
+        return "scenario_risk - сценарный индикатор риска"
+    return normalized
+
+
+def translate_crossing_mode(mode: str) -> str:
+    mapping = {
+        "no_timeline": "нет временной диаграммы",
+        "already_reached": "предельное состояние уже достигнуто",
+        "coarse_bracket_linear": "линейная интерполяция в грубом интервале",
+        "coarse_bracket_refined": "уточнение внутри грубого интервала",
+        "no_crossing_within_horizon": "в пределах горизонта переход не найден",
+        "coarse_only": "только грубая оценка",
+    }
+    return mapping.get(str(mode), str(mode))
 
 
 def translate_ml_mode(mode: str) -> str:

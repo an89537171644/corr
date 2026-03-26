@@ -9,6 +9,7 @@ class CandidateRuntimeModel:
     name: str
     backend: str
     model: object
+    family: str = "regressor"
 
     def predict_rate_factor(self, features: Sequence[float]) -> float:
         prediction = self.model.predict([list(features)])
@@ -45,7 +46,7 @@ def _fit_sklearn_candidates(features: Sequence[Sequence[float]], targets: Sequen
                 model.fit(features, targets)
             else:
                 model.fit(features, targets, sample_weight=sample_weights)
-            candidates.append(CandidateRuntimeModel(name=name, backend="sklearn", model=model))
+            candidates.append(CandidateRuntimeModel(name=name, backend="sklearn", model=model, family="tabular"))
         except Exception:
             continue
 
@@ -69,7 +70,7 @@ def _fit_xgboost_candidate(features: Sequence[Sequence[float]], targets: Sequenc
             verbosity=0,
         )
         model.fit(features, targets, sample_weight=sample_weights)
-        return [CandidateRuntimeModel(name="xgboost", backend="xgboost", model=model)]
+        return [CandidateRuntimeModel(name="xgboost", backend="xgboost", model=model, family="gradient_boosting")]
     except Exception:
         return []
 
@@ -90,6 +91,6 @@ def _fit_catboost_candidate(features: Sequence[Sequence[float]], targets: Sequen
             verbose=False,
         )
         model.fit(features, targets, sample_weight=sample_weights)
-        return [CandidateRuntimeModel(name="catboost", backend="catboost", model=model)]
+        return [CandidateRuntimeModel(name="catboost", backend="catboost", model=model, family="gradient_boosting")]
     except Exception:
         return []

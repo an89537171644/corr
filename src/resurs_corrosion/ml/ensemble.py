@@ -27,8 +27,12 @@ class DegradationFeatureVector:
 class TrainingSummary:
     dataset_journal: list[dict] = field(default_factory=list)
     accepted_row_count: int = 0
+    rejected_row_count: int = 0
     candidate_names: list[str] = field(default_factory=list)
+    candidate_registry: list[dict] = field(default_factory=list)
     execution_mode: str = "heuristic"
+    blend_mode: str = "heuristic_only"
+    interval_source: str = "heuristic_band"
 
 
 class HybridRateEnsembleModel:
@@ -59,6 +63,7 @@ class HybridRateEnsembleModel:
         summary = TrainingSummary(
             dataset_journal=matrix.dataset_journal,
             accepted_row_count=len(matrix.targets),
+            rejected_row_count=matrix.rejected_row_count,
             execution_mode="heuristic",
         )
 
@@ -66,6 +71,8 @@ class HybridRateEnsembleModel:
             self.fitted = True
             self.candidate_models = []
             summary.execution_mode = "fallback"
+            summary.blend_mode = "heuristic_only"
+            summary.interval_source = "heuristic_band"
             self.training_summary = summary
             return self
 
@@ -73,9 +80,17 @@ class HybridRateEnsembleModel:
         self.fitted = True
         if self.candidate_models:
             summary.candidate_names = [candidate.name for candidate in self.candidate_models]
+            summary.candidate_registry = [
+                {"name": candidate.name, "backend": candidate.backend, "family": candidate.family}
+                for candidate in self.candidate_models
+            ]
             summary.execution_mode = "trained"
+            summary.blend_mode = "candidate_mean_plus_heuristic_anchor"
+            summary.interval_source = "candidate_spread_plus_heuristic_padding"
         else:
             summary.execution_mode = "fallback"
+            summary.blend_mode = "heuristic_only"
+            summary.interval_source = "heuristic_band"
         self.training_summary = summary
         return self
 
@@ -159,8 +174,12 @@ class HybridRateEnsembleModel:
             "execution_mode": self.training_summary.execution_mode,
             "candidate_count": len(self.candidate_models),
             "candidate_names": list(self.training_summary.candidate_names),
+            "candidate_registry": list(self.training_summary.candidate_registry),
             "dataset_journal": list(self.training_summary.dataset_journal),
             "accepted_row_count": self.training_summary.accepted_row_count,
+            "rejected_row_count": self.training_summary.rejected_row_count,
+            "blend_mode": self.training_summary.blend_mode,
+            "interval_source": self.training_summary.interval_source,
         }
 
     def _heuristic_rate_factor(self, features: DegradationFeatureVector) -> float:

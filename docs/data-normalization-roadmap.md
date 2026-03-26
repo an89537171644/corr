@@ -13,6 +13,12 @@ Stage 2 adds stricter validation instead of a destructive schema rewrite:
 - `action.schema_version`
 - Pydantic validation on read/write paths
 
+Stage 3 expands the same compatibility-first approach with:
+
+- broader units normalization for section, material, action, and scenario payloads
+- explicit validation errors for unsupported units
+- stable replay semantics for persisted JSON snapshots after normalization
+
 ## Why normalization is still planned
 
 Structured JSON is flexible, but it has limits:

@@ -21,6 +21,13 @@ Public interface:
 - `save_model(path)`
 - `load_model(path)`
 
+Internally the stage 3 implementation is now explicit about four layers:
+
+- heuristic anchor
+- candidate-model registry
+- blend/aggregation layer
+- metadata export layer
+
 ## Runtime modes
 
 The runtime now reports one of the following execution modes:
@@ -77,7 +84,14 @@ The staged training path supports:
 - `dataset_kind = synthetic | archived | real`
 - dataset version journaling
 - accepted-row accounting
+- rejected-row accounting
 - model metadata export through `model_info()`
 
 The analysis response now emits `dataset_version`, `ml_model_version`, and top-level
 `ml_mode` so later training experiments remain traceable in API payloads and reports.
+Stage 3 also exports:
+
+- `ml_candidate_count`
+- `ml_blend_mode`
+- `ml_interval_source`
+- candidate registry metadata for trained paths

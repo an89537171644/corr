@@ -18,6 +18,7 @@ class TrainingMatrix:
     targets: List[float]
     sample_weights: List[float]
     dataset_journal: List[dict]
+    rejected_row_count: int = 0
 
 
 def normalize_training_input(dataset: Sequence[dict] | Sequence[TrainingDataset] | dict) -> List[TrainingDataset]:
@@ -58,18 +59,22 @@ def build_training_matrix(datasets: Sequence[TrainingDataset]) -> TrainingMatrix
     targets: List[float] = []
     sample_weights: List[float] = []
     journal: List[dict] = []
+    rejected_total = 0
 
     for dataset in datasets:
         accepted = 0
+        rejected = 0
         for record in dataset.records:
             target = extract_target_rate_factor(record)
             if target is None:
+                rejected += 1
                 continue
             feature_vector = extract_feature_vector(record)
             features.append(feature_vector)
             targets.append(target)
             sample_weights.append(dataset.weight * float(record.get("sample_weight", 1.0)))
             accepted += 1
+        rejected_total += rejected
 
         journal.append(
             {
@@ -78,6 +83,7 @@ def build_training_matrix(datasets: Sequence[TrainingDataset]) -> TrainingMatrix
                 "weight": dataset.weight,
                 "record_count": len(dataset.records),
                 "accepted_count": accepted,
+                "rejected_count": rejected,
             }
         )
 
@@ -86,6 +92,7 @@ def build_training_matrix(datasets: Sequence[TrainingDataset]) -> TrainingMatrix
         targets=targets,
         sample_weights=sample_weights,
         dataset_journal=journal,
+        rejected_row_count=rejected_total,
     )
 
 
