@@ -9,14 +9,23 @@ from pydantic import BaseModel, Field, model_validator
 from .services.units import (
     UnitNormalizationError,
     convert_area_to_mm2,
+    convert_area_to_mm2_with_metadata,
     convert_force_to_kn,
+    convert_force_to_kn_with_metadata,
     convert_growth_to_per_year,
+    convert_growth_to_per_year_with_metadata,
     convert_inertia_to_mm4,
+    convert_inertia_to_mm4_with_metadata,
     convert_length_to_mm,
+    convert_length_to_mm_with_metadata,
     convert_moment_to_knm,
+    convert_moment_to_knm_with_metadata,
     convert_section_modulus_to_mm3,
+    convert_section_modulus_to_mm3_with_metadata,
     convert_stress_to_mpa,
+    convert_stress_to_mpa_with_metadata,
     convert_time_to_years,
+    convert_time_to_years_with_metadata,
 )
 
 
@@ -39,6 +48,7 @@ class SectionType(str, Enum):
 class CheckType(str, Enum):
     AXIAL_TENSION = "axial_tension"
     AXIAL_COMPRESSION = "axial_compression"
+    AXIAL_COMPRESSION_ENHANCED = "axial_compression_enhanced"
     BENDING_MAJOR = "bending_major"
     COMBINED_AXIAL_BENDING_BASIC = "combined_axial_bending_basic"
     COMBINED_AXIAL_BENDING_ENHANCED = "combined_axial_bending_enhanced"
@@ -59,6 +69,7 @@ class EngineeringConfidenceLevel(str, Enum):
 class ResistanceMode(str, Enum):
     DIRECT = "direct"
     APPROXIMATE = "approximate"
+    COMPRESSION_ENHANCED = "compression_enhanced"
     COMBINED_BASIC = "combined_basic"
     COMBINED_ENHANCED = "combined_enhanced"
 
@@ -79,6 +90,29 @@ class RateFitMode(str, Enum):
 class RiskMode(str, Enum):
     SCENARIO_RISK = "scenario_risk"
     ENGINEERING_UNCERTAINTY_BAND = "engineering_uncertainty_band"
+
+
+class UncertaintyLevel(str, Enum):
+    LOW = "low"
+    MODERATE = "moderate"
+    HIGH = "high"
+    VERY_HIGH = "very_high"
+
+
+def _record_normalization_metadata(
+    metadata: dict,
+    field_name: str,
+    note: Optional[dict],
+    source_field: Optional[str] = None,
+) -> None:
+    if not note:
+        return
+
+    entry = metadata.setdefault(field_name, dict(note))
+    if source_field:
+        sources = entry.setdefault("source_fields", [])
+        if source_field not in sources:
+            sources.append(source_field)
 
 
 class AssetPassport(BaseModel):
@@ -106,6 +140,21 @@ class ThicknessMeasurement(BaseModel):
     quality: float = Field(default=1.0, ge=0.0, le=1.0)
     units: str = Field(default="mm", min_length=1)
     comment: Optional[str] = None
+    normalization_metadata: dict = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def normalize_units(self) -> "ThicknessMeasurement":
+        metadata: dict = dict(self.normalization_metadata)
+        try:
+            self.thickness_mm, note = convert_length_to_mm_with_metadata(self.thickness_mm, self.units)
+            _record_normalization_metadata(metadata, "units", note, "thickness_mm")
+            self.error_mm, note = convert_length_to_mm_with_metadata(self.error_mm, self.units)
+            _record_normalization_metadata(metadata, "units", note, "error_mm")
+        except UnitNormalizationError as exc:
+            raise ValueError(str(exc)) from exc
+        self.units = "mm"
+        self.normalization_metadata = metadata
+        return self
 
 
 class InspectionRecord(BaseModel):
@@ -133,6 +182,7 @@ class SectionDefinition(BaseModel):
     area_unit: str = "mm2"
     inertia_unit: str = "mm4"
     section_modulus_unit: str = "mm3"
+    normalization_metadata: dict = Field(default_factory=dict)
     reference_thickness_mm: Optional[float] = Field(default=None, gt=0)
 
     width_mm: Optional[float] = Field(default=None, gt=0)
@@ -156,22 +206,38 @@ class SectionDefinition(BaseModel):
 
     @model_validator(mode="after")
     def validate_shape(self) -> "SectionDefinition":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.reference_thickness_mm = convert_length_to_mm(self.reference_thickness_mm, self.geometry_unit)
-            self.width_mm = convert_length_to_mm(self.width_mm, self.geometry_unit)
-            self.thickness_mm = convert_length_to_mm(self.thickness_mm, self.geometry_unit)
-            self.height_mm = convert_length_to_mm(self.height_mm, self.geometry_unit)
-            self.flange_width_mm = convert_length_to_mm(self.flange_width_mm, self.geometry_unit)
-            self.web_thickness_mm = convert_length_to_mm(self.web_thickness_mm, self.geometry_unit)
-            self.flange_thickness_mm = convert_length_to_mm(self.flange_thickness_mm, self.geometry_unit)
-            self.leg_horizontal_mm = convert_length_to_mm(self.leg_horizontal_mm, self.geometry_unit)
-            self.leg_vertical_mm = convert_length_to_mm(self.leg_vertical_mm, self.geometry_unit)
-            self.leg_thickness_mm = convert_length_to_mm(self.leg_thickness_mm, self.geometry_unit)
-            self.outer_diameter_mm = convert_length_to_mm(self.outer_diameter_mm, self.geometry_unit)
-            self.wall_thickness_mm = convert_length_to_mm(self.wall_thickness_mm, self.geometry_unit)
-            self.area0_mm2 = convert_area_to_mm2(self.area0_mm2, self.area_unit)
-            self.inertia0_mm4 = convert_inertia_to_mm4(self.inertia0_mm4, self.inertia_unit)
-            self.section_modulus0_mm3 = convert_section_modulus_to_mm3(self.section_modulus0_mm3, self.section_modulus_unit)
+            self.reference_thickness_mm, note = convert_length_to_mm_with_metadata(self.reference_thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "reference_thickness_mm")
+            self.width_mm, note = convert_length_to_mm_with_metadata(self.width_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "width_mm")
+            self.thickness_mm, note = convert_length_to_mm_with_metadata(self.thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "thickness_mm")
+            self.height_mm, note = convert_length_to_mm_with_metadata(self.height_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "height_mm")
+            self.flange_width_mm, note = convert_length_to_mm_with_metadata(self.flange_width_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "flange_width_mm")
+            self.web_thickness_mm, note = convert_length_to_mm_with_metadata(self.web_thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "web_thickness_mm")
+            self.flange_thickness_mm, note = convert_length_to_mm_with_metadata(self.flange_thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "flange_thickness_mm")
+            self.leg_horizontal_mm, note = convert_length_to_mm_with_metadata(self.leg_horizontal_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "leg_horizontal_mm")
+            self.leg_vertical_mm, note = convert_length_to_mm_with_metadata(self.leg_vertical_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "leg_vertical_mm")
+            self.leg_thickness_mm, note = convert_length_to_mm_with_metadata(self.leg_thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "leg_thickness_mm")
+            self.outer_diameter_mm, note = convert_length_to_mm_with_metadata(self.outer_diameter_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "outer_diameter_mm")
+            self.wall_thickness_mm, note = convert_length_to_mm_with_metadata(self.wall_thickness_mm, self.geometry_unit)
+            _record_normalization_metadata(metadata, "geometry_unit", note, "wall_thickness_mm")
+            self.area0_mm2, note = convert_area_to_mm2_with_metadata(self.area0_mm2, self.area_unit)
+            _record_normalization_metadata(metadata, "area_unit", note, "area0_mm2")
+            self.inertia0_mm4, note = convert_inertia_to_mm4_with_metadata(self.inertia0_mm4, self.inertia_unit)
+            _record_normalization_metadata(metadata, "inertia_unit", note, "inertia0_mm4")
+            self.section_modulus0_mm3, note = convert_section_modulus_to_mm3_with_metadata(self.section_modulus0_mm3, self.section_modulus_unit)
+            _record_normalization_metadata(metadata, "section_modulus_unit", note, "section_modulus0_mm3")
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
 
@@ -179,6 +245,7 @@ class SectionDefinition(BaseModel):
         self.area_unit = "mm2"
         self.inertia_unit = "mm4"
         self.section_modulus_unit = "mm3"
+        self.normalization_metadata = metadata
 
         if self.section_type == SectionType.PLATE:
             required = [self.width_mm, self.thickness_mm]
@@ -208,6 +275,14 @@ class SectionDefinition(BaseModel):
         if any(value is None for value in required):
             raise ValueError(f"Missing geometric data for section type '{self.section_type.value}'.")
 
+        if self.section_type == SectionType.ANGLE:
+            slenderness_ratio = max(float(self.leg_horizontal_mm), float(self.leg_vertical_mm)) / max(float(self.leg_thickness_mm), 1e-9)
+            if slenderness_ratio > 60.0:
+                raise ValueError(
+                    "Angle reducer does not support extremely slender leg/thickness ratios above 60. "
+                    "Thin-walled torsional interpretation is outside the current engineering domain."
+                )
+
         if self.section_type == SectionType.TUBE and float(self.wall_thickness_mm) * 2.0 >= float(self.outer_diameter_mm):
             raise ValueError("Tube wall thickness must be lower than half of the outer diameter.")
 
@@ -217,17 +292,22 @@ class SectionDefinition(BaseModel):
 class MaterialInput(BaseModel):
     schema_version: str = "material.v2"
     stress_unit: str = "MPa"
+    normalization_metadata: dict = Field(default_factory=dict)
     fy_mpa: float = Field(gt=0)
     gamma_m: float = Field(default=1.0, gt=0)
     stability_factor: float = Field(default=1.0, gt=0)
 
     @model_validator(mode="after")
     def normalize_units(self) -> "MaterialInput":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.fy_mpa = float(convert_stress_to_mpa(self.fy_mpa, self.stress_unit))
+            self.fy_mpa, note = convert_stress_to_mpa_with_metadata(self.fy_mpa, self.stress_unit)
+            _record_normalization_metadata(metadata, "stress_unit", note, "fy_mpa")
+            self.fy_mpa = float(self.fy_mpa)
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
         self.stress_unit = "MPa"
+        self.normalization_metadata = metadata
         return self
 
 
@@ -238,6 +318,7 @@ class ActionInput(BaseModel):
     moment_unit: str = "kN*m"
     length_unit: str = "mm"
     growth_time_unit: str = "year"
+    normalization_metadata: dict = Field(default_factory=dict)
     demand_value: Optional[float] = Field(default=None, gt=0)
     axial_force_value: Optional[float] = Field(default=None, gt=0)
     bending_moment_value: Optional[float] = Field(default=None, gt=0)
@@ -250,12 +331,18 @@ class ActionInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_action_payload(self) -> "ActionInput":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.demand_value = convert_force_to_kn(self.demand_value, self.force_unit)
-            self.axial_force_value = convert_force_to_kn(self.axial_force_value, self.force_unit)
-            self.bending_moment_value = convert_moment_to_knm(self.bending_moment_value, self.moment_unit)
-            self.effective_length_mm = convert_length_to_mm(self.effective_length_mm, self.length_unit)
-            normalized_growth = convert_growth_to_per_year(self.demand_growth_factor_per_year, self.growth_time_unit)
+            self.demand_value, note = convert_force_to_kn_with_metadata(self.demand_value, self.force_unit)
+            _record_normalization_metadata(metadata, "force_unit", note, "demand_value")
+            self.axial_force_value, note = convert_force_to_kn_with_metadata(self.axial_force_value, self.force_unit)
+            _record_normalization_metadata(metadata, "force_unit", note, "axial_force_value")
+            self.bending_moment_value, note = convert_moment_to_knm_with_metadata(self.bending_moment_value, self.moment_unit)
+            _record_normalization_metadata(metadata, "moment_unit", note, "bending_moment_value")
+            self.effective_length_mm, note = convert_length_to_mm_with_metadata(self.effective_length_mm, self.length_unit)
+            _record_normalization_metadata(metadata, "length_unit", note, "effective_length_mm")
+            normalized_growth, note = convert_growth_to_per_year_with_metadata(self.demand_growth_factor_per_year, self.growth_time_unit)
+            _record_normalization_metadata(metadata, "growth_time_unit", note, "demand_growth_factor_per_year")
             self.demand_growth_factor_per_year = round(float(normalized_growth or 0.0), 12)
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
@@ -264,6 +351,7 @@ class ActionInput(BaseModel):
         self.moment_unit = "kN*m"
         self.length_unit = "mm"
         self.growth_time_unit = "year"
+        self.normalization_metadata = metadata
 
         if self.check_type in (
             CheckType.COMBINED_AXIAL_BENDING_BASIC,
@@ -286,6 +374,7 @@ class CalculationScenarioInput(BaseModel):
     code: str = Field(min_length=1)
     name: str = Field(min_length=1)
     time_unit: str = "year"
+    normalization_metadata: dict = Field(default_factory=dict)
     corrosion_k_factor: float = Field(default=1.0, gt=0)
     b_override: Optional[float] = Field(default=None, gt=0)
     demand_factor: float = Field(default=1.0, gt=0)
@@ -295,11 +384,14 @@ class CalculationScenarioInput(BaseModel):
 
     @model_validator(mode="after")
     def normalize_time_units(self) -> "CalculationScenarioInput":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.repair_after_years = convert_time_to_years(self.repair_after_years, self.time_unit)
+            self.repair_after_years, note = convert_time_to_years_with_metadata(self.repair_after_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "repair_after_years")
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
         self.time_unit = "year"
+        self.normalization_metadata = metadata
         return self
 
 
@@ -321,19 +413,28 @@ class CalculationRequest(BaseModel):
     forecast_horizon_years: float = Field(default=25.0, gt=0)
     time_step_years: float = Field(default=1.0, gt=0)
     time_unit: str = "year"
+    normalization_metadata: dict = Field(default_factory=dict)
     inspections: List[InspectionRecord] = Field(default_factory=list)
     scenarios: List[CalculationScenarioInput] = Field(default_factory=list)
     forecast_mode: ForecastMode = ForecastMode.HYBRID
 
     @model_validator(mode="after")
     def normalize_time_unit(self) -> "CalculationRequest":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.current_service_life_years = float(convert_time_to_years(self.current_service_life_years, self.time_unit))
-            self.forecast_horizon_years = float(convert_time_to_years(self.forecast_horizon_years, self.time_unit))
-            self.time_step_years = float(convert_time_to_years(self.time_step_years, self.time_unit))
+            self.current_service_life_years, note = convert_time_to_years_with_metadata(self.current_service_life_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "current_service_life_years")
+            self.forecast_horizon_years, note = convert_time_to_years_with_metadata(self.forecast_horizon_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "forecast_horizon_years")
+            self.time_step_years, note = convert_time_to_years_with_metadata(self.time_step_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "time_step_years")
+            self.current_service_life_years = float(self.current_service_life_years)
+            self.forecast_horizon_years = float(self.forecast_horizon_years)
+            self.time_step_years = float(self.time_step_years)
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
         self.time_unit = "year"
+        self.normalization_metadata = metadata
         return self
 
 
@@ -384,6 +485,21 @@ class TimelinePoint(BaseModel):
     margin_value: float
 
 
+class RefinementDiagnostics(BaseModel):
+    status: str = "coarse_only"
+    search_mode: str = "coarse_only"
+    bracket_width_years: Optional[float] = None
+    refinement_iterations: int = 0
+    margin_span_value: Optional[float] = None
+    warnings: List[str] = Field(default_factory=list)
+
+
+class UncertaintyTrajectories(BaseModel):
+    central: List[TimelinePoint] = Field(default_factory=list)
+    conservative: List[TimelinePoint] = Field(default_factory=list)
+    upper: List[TimelinePoint] = Field(default_factory=list)
+
+
 class LifeIntervalYears(BaseModel):
     lower_years: Optional[float] = None
     upper_years: Optional[float] = None
@@ -413,6 +529,10 @@ class ScenarioResult(BaseModel):
     engineering_confidence_level: EngineeringConfidenceLevel = EngineeringConfidenceLevel.D
     resistance_mode: ResistanceMode = ResistanceMode.APPROXIMATE
     reducer_mode: ReducerMode = ReducerMode.DIRECT
+    uncertainty_level: UncertaintyLevel = UncertaintyLevel.MODERATE
+    uncertainty_source: str = "scenario_library_only"
+    uncertainty_trajectories: UncertaintyTrajectories = Field(default_factory=UncertaintyTrajectories)
+    refinement_diagnostics: RefinementDiagnostics = Field(default_factory=RefinementDiagnostics)
     uncertainty_basis: List[str] = Field(default_factory=list)
     uncertainty_warnings: List[str] = Field(default_factory=list)
     warnings: List[str] = Field(default_factory=list)
@@ -434,12 +554,26 @@ class MLModelVersionInfo(BaseModel):
     version: str
     fitted: bool
     notes: Optional[str] = None
+    execution_mode: Optional[str] = None
+    blend_mode: Optional[str] = None
+    interval_source: Optional[str] = None
+    candidate_count: int = 0
+    accepted_candidate_count: int = 0
+    rejected_candidate_count: int = 0
+    accepted_row_count: int = 0
+    rejected_row_count: int = 0
+    acceptance_policy: dict = Field(default_factory=dict)
+    candidate_registry: List[dict] = Field(default_factory=list)
+    dataset_journal: List[dict] = Field(default_factory=list)
 
 
 class DatasetVersionInfo(BaseModel):
     code: str
     source: str
     rows: int
+    data_hash: Optional[str] = None
+    accepted_row_count: int = 0
+    rejected_row_count: int = 0
     notes: Optional[str] = None
 
 
@@ -458,9 +592,13 @@ class CalculationResponse(BaseModel):
     rate_fit_mode: RateFitMode = RateFitMode.BASELINE_FALLBACK
     risk_mode: RiskMode = RiskMode.SCENARIO_RISK
     life_interval_years: LifeIntervalYears = Field(default_factory=LifeIntervalYears)
+    uncertainty_level: UncertaintyLevel = UncertaintyLevel.MODERATE
+    uncertainty_source: str = "scenario_library_only"
     uncertainty_basis: List[str] = Field(default_factory=list)
     uncertainty_warnings: List[str] = Field(default_factory=list)
     crossing_search_mode: str = "coarse_only"
+    refinement_diagnostics: RefinementDiagnostics = Field(default_factory=RefinementDiagnostics)
+    governing_uncertainty_trajectories: UncertaintyTrajectories = Field(default_factory=UncertaintyTrajectories)
     ml_mode: str = "heuristic"
     ml_candidate_count: int = 0
     ml_blend_mode: str = "heuristic_only"
@@ -511,19 +649,28 @@ class BaselineStoredElementRequest(BaseModel):
     time_step_years: float = Field(default=1.0, gt=0)
     current_service_life_years: Optional[float] = Field(default=None, ge=0.0)
     time_unit: str = "year"
+    normalization_metadata: dict = Field(default_factory=dict)
     scenarios: List[CalculationScenarioInput] = Field(default_factory=list)
     forecast_mode: ForecastMode = ForecastMode.HYBRID
 
     @model_validator(mode="after")
     def normalize_time_unit(self) -> "BaselineStoredElementRequest":
+        metadata: dict = dict(self.normalization_metadata)
         try:
-            self.forecast_horizon_years = float(convert_time_to_years(self.forecast_horizon_years, self.time_unit))
-            self.time_step_years = float(convert_time_to_years(self.time_step_years, self.time_unit))
+            self.forecast_horizon_years, note = convert_time_to_years_with_metadata(self.forecast_horizon_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "forecast_horizon_years")
+            self.time_step_years, note = convert_time_to_years_with_metadata(self.time_step_years, self.time_unit)
+            _record_normalization_metadata(metadata, "time_unit", note, "time_step_years")
+            self.forecast_horizon_years = float(self.forecast_horizon_years)
+            self.time_step_years = float(self.time_step_years)
             if self.current_service_life_years is not None:
-                self.current_service_life_years = float(convert_time_to_years(self.current_service_life_years, self.time_unit))
+                self.current_service_life_years, note = convert_time_to_years_with_metadata(self.current_service_life_years, self.time_unit)
+                _record_normalization_metadata(metadata, "time_unit", note, "current_service_life_years")
+                self.current_service_life_years = float(self.current_service_life_years)
         except UnitNormalizationError as exc:
             raise ValueError(str(exc)) from exc
         self.time_unit = "year"
+        self.normalization_metadata = metadata
         return self
 
 
@@ -580,6 +727,9 @@ class ImportFormat(str, Enum):
 class ImportIssue(BaseModel):
     row_reference: str
     message: str
+    code: Optional[str] = None
+    severity: str = "error"
+    origin: Optional[str] = None
 
 
 class ImportSummary(BaseModel):
@@ -591,4 +741,5 @@ class ImportSummary(BaseModel):
     warning_count: int = 0
     error_count: int = 0
     warnings: List[str] = Field(default_factory=list)
+    warning_details: List[ImportIssue] = Field(default_factory=list)
     errors: List[ImportIssue] = Field(default_factory=list)

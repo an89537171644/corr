@@ -1,0 +1,27 @@
+{
+  "environment_category": "C5",
+  "forecast_mode": "hybrid",
+  "engineering_confidence_level": "A",
+  "resistance_mode": "direct",
+  "reducer_mode": "direct",
+  "rate_fit_mode": "two_point",
+  "risk_mode": "engineering_uncertainty_band",
+  "uncertainty_level": "moderate",
+  "uncertainty_source": "inspection_history_limited",
+  "used_inspection_count": 2,
+  "used_measurement_count": 2,
+  "scenario_count": 5,
+  "recommended_action": "Допускается продолжение эксплуатации при плановом мониторинге",
+  "next_inspection_within_years": 3.0,
+  "baseline_remaining_life_years": null,
+  "required_warning_substrings": [
+    "Reducer tube",
+    "двум последним обследованиям"
+  ],
+  "required_fallback_flags": [],
+  "required_report_markers": [
+    "Матрица предупреждений",
+    "Ограничения применимости",
+    "Рекомендации"
+  ]
+}

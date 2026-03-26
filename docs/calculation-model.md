@@ -95,6 +95,7 @@ Implemented section reducers:
 Residual resistance is approximated at engineering-MVP/stage-3 level:
 
 - axial tension/compression through effective area
+- `axial_compression_enhanced` through explicit engineering slenderness inputs and transparent downgrade rules
 - major-axis bending through effective section modulus
 - basic combined axial force and bending interaction check `N/Nrd + M/Mrd <= 1.0`
 - enhanced combined axial force and bending interaction check with explicit axial-force kind,
@@ -110,6 +111,13 @@ The current search is no longer grid-only. It uses:
 - local sign-change bracket
 - linear/monotone refinement inside the bracket
 
+The diagnostics now classify the search result explicitly as:
+
+- `bracketed_crossing`
+- `numerically_uncertain_crossing`
+- `near_flat_no_crossing`
+- `no_crossing_within_horizon`
+
 ## 8. Uncertainty and risk layer
 
 Stage 3 keeps the scenario-based risk profile, but now separates two explicit modes:
@@ -124,9 +132,13 @@ The response and reports expose:
 
 - `risk_mode`
 - `life_interval_years`
+- `uncertainty_level`
+- `uncertainty_source`
 - `uncertainty_basis`
 - `uncertainty_warnings`
 - `crossing_search_mode`
+- `refinement_diagnostics`
+- `central/conservative/upper` engineering trajectories
 
 ## 9. Forecast modes
 
@@ -152,7 +164,10 @@ The analysis payload, UI, and reports now expose:
 - `ml_mode`
 - `risk_mode`
 - `life_interval_years`
+- `uncertainty_level`
+- `uncertainty_source`
 - `crossing_search_mode`
+- `refinement_diagnostics`
 - `ml_candidate_count`
 - `ml_blend_mode`
 - `warnings[]`

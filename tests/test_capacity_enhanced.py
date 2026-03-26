@@ -65,6 +65,30 @@ def test_combined_axial_bending_enhanced_uses_dedicated_mode(
     assert any("SP16" in warning or "СП 16" in warning for warning in enhanced.warnings)
 
 
+def test_axial_compression_enhanced_uses_explicit_engineering_mode(
+    section: SectionProperties,
+    material: MaterialInput,
+) -> None:
+    result = evaluate_margin(
+        section,
+        material,
+        ActionInput(
+            check_type=CheckType.AXIAL_COMPRESSION_ENHANCED,
+            demand_value=260.0,
+            effective_length_mm=3200.0,
+            effective_length_factor=1.0,
+            support_condition="hinged-hinged",
+        ),
+        scenario_factor=1.0,
+        delta_years=0.0,
+    )
+
+    assert result.resistance_mode == ResistanceMode.COMPRESSION_ENHANCED
+    assert result.engineering_confidence_level == EngineeringConfidenceLevel.B
+    assert result.resistance_unit == "kN"
+    assert any("slenderness" in warning.lower() or "SP 16" in warning for warning in result.warnings)
+
+
 def test_combined_axial_bending_enhanced_without_effective_length_downgrades_confidence(
     section: SectionProperties,
     material: MaterialInput,

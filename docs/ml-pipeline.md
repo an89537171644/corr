@@ -28,6 +28,13 @@ Internally the stage 3 implementation is now explicit about four layers:
 - blend/aggregation layer
 - metadata export layer
 
+Stage 4 extends this with:
+
+- candidate acceptance policy (`mae_threshold`, `minimum_rows`)
+- accepted/rejected candidate statuses and reasons
+- dataset journaling with short dataset hashes
+- repeatable demo training script outputting model artifact plus summary report
+
 ## Runtime modes
 
 The runtime now reports one of the following execution modes:
@@ -83,9 +90,18 @@ The staged training path supports:
 
 - `dataset_kind = synthetic | archived | real`
 - dataset version journaling
+- dataset hash journaling
 - accepted-row accounting
 - rejected-row accounting
 - model metadata export through `model_info()`
+
+The candidate registry now records for each candidate:
+
+- backend
+- family
+- `accepted|rejected` status
+- reason
+- training MAE when available
 
 The analysis response now emits `dataset_version`, `ml_model_version`, and top-level
 `ml_mode` so later training experiments remain traceable in API payloads and reports.
@@ -95,3 +111,9 @@ Stage 3 also exports:
 - `ml_blend_mode`
 - `ml_interval_source`
 - candidate registry metadata for trained paths
+
+Demo reproducibility:
+
+- `scripts/train_demo_model.py --dataset synthetic|archived|mixed`
+- saved model artifact `.bin`
+- saved summary report `.summary.json`

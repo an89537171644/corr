@@ -72,19 +72,30 @@ def test_analysis_payload_and_reports_expose_stage3_flags(client) -> None:
 
     assert result["risk_mode"] == "engineering_uncertainty_band"
     assert "life_interval_years" in result
+    assert "uncertainty_level" in result
+    assert "uncertainty_source" in result
     assert "uncertainty_basis" in result
     assert "crossing_search_mode" in result
+    assert "refinement_diagnostics" in result
+    assert "governing_uncertainty_trajectories" in result
     assert "ml_candidate_count" in result
     assert "ml_blend_mode" in result
     assert result["resistance_mode"] == "combined_enhanced"
+    assert result["results"][0]["uncertainty_trajectories"]["upper"]
+    assert "accepted_row_count" in result["ml_model_version"]
+    assert "dataset_journal" in result["ml_model_version"]
+    assert "acceptance_policy" in result["ml_model_version"]
+    assert result["dataset_version"]["data_hash"]
 
     html_response = client.get(f"/report/{analysis['id']}?format=html")
     assert html_response.status_code == 200
     assert "Неопределенность и риск" in html_response.text
     assert "Режим риска" in html_response.text
+    assert "Уровень uncertainty" in html_response.text
     assert "ML blend mode" in html_response.text
 
     md_response = client.get(f"/report/{analysis['id']}?format=md")
     assert md_response.status_code == 200
     assert "## Неопределенность и риск" in md_response.text
+    assert "R upper" in md_response.text
     assert "ML blend mode" in md_response.text

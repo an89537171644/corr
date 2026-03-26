@@ -22,6 +22,7 @@ from ..domain import (
     ImportIssue,
     ImportSummary,
     InspectionCreate,
+    InspectionRead,
     MaterialInput,
     SectionDefinition,
     SectionType,
@@ -34,6 +35,8 @@ from ..storage import (
     create_inspection,
     get_element_by_asset_and_code,
     get_inspection_by_element_and_code,
+    inspection_to_schema,
+    list_inspections_for_element,
     update_element,
     update_inspection,
 )
@@ -57,10 +60,28 @@ class ImportAccumulator:
     created_count: int = 0
     updated_count: int = 0
     warnings: List[str] = field(default_factory=list)
+    warning_details: List[ImportIssue] = field(default_factory=list)
     errors: List[ImportIssue] = field(default_factory=list)
 
     def add_error(self, row_reference: str, message: str) -> None:
-        self.errors.append(ImportIssue(row_reference=row_reference, message=message))
+        self.errors.append(ImportIssue(row_reference=row_reference, message=message, severity="error"))
+
+    def add_warning(
+        self,
+        row_reference: str,
+        message: str,
+        code: Optional[str] = None,
+        origin: Optional[str] = None,
+    ) -> None:
+        issue = ImportIssue(
+            row_reference=row_reference,
+            message=message,
+            code=code,
+            severity="warning",
+            origin=origin,
+        )
+        self.warning_details.append(issue)
+        self.warnings.append(message)
 
     def build(self) -> ImportSummary:
         return ImportSummary(
@@ -72,6 +93,7 @@ class ImportAccumulator:
             warning_count=len(self.warnings),
             error_count=len(self.errors),
             warnings=self.warnings,
+            warning_details=self.warning_details,
             errors=self.errors,
         )
 
@@ -154,7 +176,159 @@ def import_inspections(session: Session, element_id: int, filename: str, payload
         except Exception as exc:
             summary.add_error(reference or inspection_key, normalize_exception(exc))
 
+    for warning in collect_import_history_warnings(session, element_id):
+        summary.add_warning(
+            row_reference=warning.row_reference,
+            message=warning.message,
+            code=warning.code,
+            origin=warning.origin,
+        )
+
     return summary.build()
+
+
+def collect_import_history_warnings(session: Session, element_id: int) -> List[ImportIssue]:
+    inspections = [inspection_to_schema(item) for item in list_inspections_for_element(session, element_id)]
+    if not inspections:
+        return []
+
+    issues: List[ImportIssue] = []
+    if len(inspections) < 2:
+        issues.append(
+            ImportIssue(
+                row_reference="history",
+                code="weak_history_single_inspection",
+                severity="warning",
+                origin="inspection_history",
+                message="Inspection history contains fewer than two inspections; rate fitting remains weak and should be treated cautiously.",
+            )
+        )
+
+    ordered = sorted(inspections, key=lambda item: item.performed_at)
+    total_measurements = sum(len(item.measurements) for item in ordered)
+    if total_measurements < 3:
+        issues.append(
+            ImportIssue(
+                row_reference="history",
+                code="weak_history_sparse_measurements",
+                severity="warning",
+                origin="inspection_history",
+                message="Inspection history contains too few measurements for stable trend diagnostics.",
+            )
+        )
+
+    average_quality = (
+        sum(measurement.quality for inspection in ordered for measurement in inspection.measurements) / max(total_measurements, 1)
+    )
+    if total_measurements and average_quality < 0.75:
+        issues.append(
+            ImportIssue(
+                row_reference="history",
+                code="weak_history_low_quality",
+                severity="warning",
+                origin="inspection_history",
+                message=f"Average measurement quality is low ({average_quality:.2f}); engineering confidence should be downgraded.",
+            )
+        )
+
+    if len(ordered) >= 2:
+        span_years = (ordered[-1].performed_at - ordered[0].performed_at).days / 365.25
+        if span_years < 0.75:
+            issues.append(
+                ImportIssue(
+                    row_reference="history",
+                    code="weak_history_short_span",
+                    severity="warning",
+                    origin="inspection_history",
+                    message=f"Inspection history spans only {span_years:.2f} years; long-term degradation fitting may be unstable.",
+                )
+            )
+
+    performed_dates = {}
+    for inspection in ordered:
+        reference = inspection_reference(inspection)
+        if inspection.performed_at in performed_dates:
+            issues.append(
+                ImportIssue(
+                    row_reference=reference,
+                    code="duplicate_performed_at",
+                    severity="warning",
+                    origin="chronology",
+                    message=f"Inspection date {inspection.performed_at.isoformat()} is duplicated in the history; chronology should be checked manually.",
+                )
+            )
+        performed_dates[inspection.performed_at] = reference
+
+        for measurement in inspection.measurements:
+            if measurement.measured_at and measurement.measured_at > inspection.performed_at:
+                issues.append(
+                    ImportIssue(
+                        row_reference=reference,
+                        code="measurement_after_inspection",
+                        severity="warning",
+                        origin="chronology",
+                        message=(
+                            f"Measurement {measurement.point_id or measurement.zone_id} is dated "
+                            f"{measurement.measured_at.isoformat()} after inspection date {inspection.performed_at.isoformat()}."
+                        ),
+                    )
+                )
+
+    issues.extend(collect_thickness_trend_warnings(ordered))
+    return deduplicate_import_issues(issues)
+
+
+def collect_thickness_trend_warnings(inspections: Sequence[InspectionCreate | InspectionRead]) -> List[ImportIssue]:
+    issues: List[ImportIssue] = []
+    by_zone: Dict[str, List[Tuple[InspectionCreate | InspectionRead, float, float]]] = defaultdict(list)
+
+    for inspection in inspections:
+        measurements_by_zone: Dict[str, List[ThicknessMeasurement]] = defaultdict(list)
+        for measurement in inspection.measurements:
+            measurements_by_zone[measurement.zone_id].append(measurement)
+
+        for zone_id, measurements in measurements_by_zone.items():
+            average_thickness = sum(item.thickness_mm for item in measurements) / len(measurements)
+            average_error = sum(item.error_mm for item in measurements) / len(measurements)
+            by_zone[zone_id].append((inspection, average_thickness, average_error))
+
+    for zone_id, history in by_zone.items():
+        ordered_history = sorted(history, key=lambda item: item[0].performed_at)
+        for previous, current in zip(ordered_history, ordered_history[1:]):
+            previous_inspection, previous_thickness, previous_error = previous
+            current_inspection, current_thickness, current_error = current
+            rebound_tolerance = max(0.25, previous_error + current_error + 0.1)
+            if current_thickness > previous_thickness + rebound_tolerance:
+                issues.append(
+                    ImportIssue(
+                        row_reference=f"{inspection_reference(previous_inspection)} -> {inspection_reference(current_inspection)}",
+                        code="thickness_rebound",
+                        severity="warning",
+                        origin="inspection_history",
+                        message=(
+                            f"Zone {zone_id} thickness increased from {previous_thickness:.2f} mm "
+                            f"to {current_thickness:.2f} mm. This may indicate repair, inconsistent units, or low-quality history."
+                        ),
+                    )
+                )
+
+    return issues
+
+
+def inspection_reference(inspection: InspectionCreate | InspectionRead) -> str:
+    return inspection.inspection_code or f"{inspection.performed_at.isoformat()}::{inspection.method}"
+
+
+def deduplicate_import_issues(issues: Sequence[ImportIssue]) -> List[ImportIssue]:
+    unique: List[ImportIssue] = []
+    seen = set()
+    for issue in issues:
+        key = (issue.row_reference, issue.code, issue.message)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(issue)
+    return unique
 
 
 def detect_import_format(filename: str) -> ImportFormat:

@@ -18,6 +18,7 @@ Stage 3 expands the same compatibility-first approach with:
 - broader units normalization for section, material, action, and scenario payloads
 - explicit validation errors for unsupported units
 - stable replay semantics for persisted JSON snapshots after normalization
+- explicit `normalization_metadata` on validated payloads when compatibility aliases are applied
 
 ## Why normalization is still planned
 
@@ -46,6 +47,14 @@ Recommended next step:
 - keep current JSON as compatibility storage
 - add read models that can hydrate from either source
 
+Partially implemented now:
+
+- `element_section_snapshots`
+- `element_material_snapshots`
+- `element_action_snapshots`
+- write-through sync from current JSON payloads into shadow tables
+- compatibility adapter that can hydrate reads from the shadow layer without breaking the legacy JSON path
+
 ### Phase 3. Dual-write migration
 
 When the schema stabilizes:
@@ -69,3 +78,13 @@ Any normalization step must preserve:
 - existing demo cases
 - existing stored calculations in `analysis_runs`
 - deterministic replay of historical analysis results
+
+## Import hardening policy
+
+Inspection import now returns explicit structured `warning_details` for:
+
+- weak histories with too few inspections or measurements
+- low-quality histories
+- short chronology spans
+- suspicious chronology such as measurements dated after the inspection
+- impossible thickness rebounds that may indicate repair, unit drift, or contradictory history

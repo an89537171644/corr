@@ -13,6 +13,7 @@ from resurs_corrosion.domain import (
     MaterialInput,
     SectionDefinition,
     SectionType,
+    ThicknessMeasurement,
     ZoneDefinition,
 )
 
@@ -66,6 +67,66 @@ def test_schema_models_normalize_stage3_units() -> None:
     assert request.time_step_years == pytest.approx(0.5)
 
 
+def test_schema_models_support_alias_units_with_metadata() -> None:
+    section = SectionDefinition(
+        section_type=SectionType.PLATE,
+        geometry_unit="centimeter",
+        width_mm=20.0,
+        thickness_mm=1.2,
+    )
+    material = MaterialInput(fy_mpa=245.0, stress_unit="n/mm^2", gamma_m=1.05, stability_factor=0.9)
+    action = ActionInput(
+        check_type=CheckType.AXIAL_COMPRESSION_ENHANCED,
+        force_unit="kilonewton",
+        length_unit="meter",
+        growth_time_unit="months",
+        demand_value=420.0,
+        effective_length_mm=3.2,
+    )
+    scenario = CalculationScenarioInput(code="S1", name="Scenario 1", time_unit="years", repair_after_years=0.5)
+    measurement = ThicknessMeasurement(zone_id="z1", thickness_mm=1.18, error_mm=0.01, units="centimeter", quality=0.9)
+    request = CalculationRequest(
+        asset=AssetPassport(name="Asset"),
+        element=ElementPassport(element_id="E-1", element_type="column"),
+        environment_category=EnvironmentCategory.C3,
+        section=section,
+        zones=[ZoneDefinition(zone_id="z1", role="plate", initial_thickness_mm=12.0)],
+        material=material,
+        action=action,
+        current_service_life_years=12.0,
+        forecast_horizon_years=24.0,
+        time_step_years=6.0,
+        time_unit="months",
+        scenarios=[scenario],
+    )
+
+    assert section.geometry_unit == "mm"
+    assert section.normalization_metadata["geometry_unit"]["input_unit"] == "centimeter"
+    assert material.stress_unit == "MPa"
+    assert material.normalization_metadata["stress_unit"]["normalized_unit"] == "mpa"
+    assert action.force_unit == "kN"
+    assert action.normalization_metadata["force_unit"]["input_unit"] == "kilonewton"
+    assert action.effective_length_mm == pytest.approx(3200.0)
+    assert measurement.units == "mm"
+    assert measurement.thickness_mm == pytest.approx(11.8)
+    assert measurement.normalization_metadata["units"]["source_fields"] == ["thickness_mm", "error_mm"]
+    assert request.time_unit == "year"
+    assert request.normalization_metadata["time_unit"]["input_unit"] == "months"
+
+
+def test_canonical_units_do_not_emit_normalization_metadata() -> None:
+    section = SectionDefinition(section_type=SectionType.PLATE, geometry_unit="mm", width_mm=200.0, thickness_mm=12.0)
+    material = MaterialInput(fy_mpa=245.0, stress_unit="mpa", gamma_m=1.05, stability_factor=0.9)
+    action = ActionInput(check_type=CheckType.AXIAL_TENSION, demand_value=180.0, force_unit="kn")
+
+    assert section.normalization_metadata == {}
+    assert material.normalization_metadata == {}
+    assert action.normalization_metadata == {}
+
+
 def test_invalid_unit_is_not_silently_accepted() -> None:
     with pytest.raises(ValueError):
         SectionDefinition(section_type=SectionType.PLATE, geometry_unit="inch", width_mm=20.0, thickness_mm=1.0)
+
+    with pytest.raises(ValueError):
+        ThicknessMeasurement(zone_id="z1", thickness_mm=12.0, units="kgf", quality=0.9)

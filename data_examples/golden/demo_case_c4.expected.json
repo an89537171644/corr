@@ -1,0 +1,26 @@
+{
+  "environment_category": "C4",
+  "forecast_mode": "hybrid",
+  "engineering_confidence_level": "A",
+  "resistance_mode": "direct",
+  "reducer_mode": "direct",
+  "rate_fit_mode": "two_point",
+  "risk_mode": "engineering_uncertainty_band",
+  "uncertainty_level": "high",
+  "uncertainty_source": "inspection_history_limited",
+  "used_inspection_count": 2,
+  "used_measurement_count": 6,
+  "scenario_count": 5,
+  "recommended_action": "Требуется немедленная проверка усиления или замены элемента",
+  "next_inspection_within_years": 0.0,
+  "baseline_remaining_life_years": 4.415,
+  "required_warning_substrings": [
+    "двум последним обследованиям"
+  ],
+  "required_fallback_flags": [],
+  "required_report_markers": [
+    "Матрица предупреждений",
+    "Ограничения применимости",
+    "Рекомендации"
+  ]
+}

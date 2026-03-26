@@ -75,9 +75,16 @@ def test_engineering_uncertainty_band_is_reported_when_history_exists() -> None:
     assert response.life_interval_years.lower_years is not None
     assert response.life_interval_years.upper_years is not None
     assert response.life_interval_years.lower_years <= response.life_interval_years.upper_years
+    assert response.uncertainty_level in {"moderate", "high", "very_high", "low"}
+    assert response.uncertainty_source.startswith("inspection_history")
     assert response.uncertainty_basis
     assert response.crossing_search_mode
     assert response.results[0].life_interval_years.lower_years is not None
+    assert response.results[0].life_interval_years.upper_years is not None
+    assert response.results[0].uncertainty_trajectories.central
+    assert response.results[0].uncertainty_trajectories.conservative
+    assert response.results[0].uncertainty_trajectories.upper
+    assert response.refinement_diagnostics.status
 
 
 def test_scenario_risk_mode_is_kept_without_inspection_history() -> None:

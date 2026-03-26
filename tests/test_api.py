@@ -613,3 +613,75 @@ def test_import_assets_elements_and_inspections(client) -> None:
     calculation_body = calculation_response.json()
     assert calculation_body["environment_category"] == "C3"
     assert len(calculation_body["results"]) == 5
+
+
+def test_import_inspections_returns_structured_history_warnings(client) -> None:
+    asset_response = client.post("/api/v1/assets", json={"name": "Import warnings asset"})
+    asset_id = asset_response.json()["id"]
+    element_response = client.post(
+        f"/api/v1/assets/{asset_id}/elements",
+        json={
+            "element_id": "WARN-01",
+            "element_type": "beam",
+            "environment_category": "C4",
+            "current_service_life_years": 18,
+            "section": {
+                "section_type": "plate",
+                "width_mm": 220,
+                "thickness_mm": 12,
+            },
+            "zones": [
+                {
+                    "zone_id": "web",
+                    "role": "plate",
+                    "initial_thickness_mm": 12,
+                    "exposed_surfaces": 2,
+                }
+            ],
+            "material": {
+                "fy_mpa": 245,
+                "gamma_m": 1.05,
+                "stability_factor": 0.9,
+            },
+            "action": {
+                "check_type": "axial_tension",
+                "demand_value": 180,
+            },
+        },
+    )
+    element_id = element_response.json()["id"]
+
+    workbook = Workbook()
+    inspections_sheet = workbook.active
+    inspections_sheet.title = "inspections"
+    inspections_sheet.append(["inspection_code", "performed_at", "method", "executor", "findings"])
+    inspections_sheet.append(["WARN-I1", "2024-03-24", "ultrasonic", "Lab A", "Initial inspection"])
+    inspections_sheet.append(["WARN-I2", "2026-03-24", "ultrasonic", "Lab A", "Repeated spot checks"])
+
+    measurements_sheet = workbook.create_sheet("measurements")
+    measurements_sheet.append(["inspection_code", "zone_id", "point_id", "thickness_mm", "error_mm", "measured_at", "quality", "units"])
+    measurements_sheet.append(["WARN-I1", "web", "W-1", 7.0, 0.1, "2024-03-24", 0.90, "mm"])
+    measurements_sheet.append(["WARN-I2", "web", "W-1", 8.2, 0.1, "2026-03-25", 0.72, "mm"])
+
+    workbook_bytes = io.BytesIO()
+    workbook.save(workbook_bytes)
+    workbook_bytes.seek(0)
+
+    response = client.post(
+        f"/api/v1/elements/{element_id}/import/inspections",
+        files={
+            "file": (
+                "warnings.xlsx",
+                workbook_bytes.getvalue(),
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["created_count"] == 2
+    assert body["warning_count"] >= 2
+    warning_codes = {item["code"] for item in body["warning_details"]}
+    assert "thickness_rebound" in warning_codes
+    assert "measurement_after_inspection" in warning_codes

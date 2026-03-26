@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from dataclasses import dataclass
 from typing import Iterable, List, Sequence
 
@@ -80,6 +82,7 @@ def build_training_matrix(datasets: Sequence[TrainingDataset]) -> TrainingMatrix
             {
                 "dataset_kind": dataset.dataset_kind,
                 "version": dataset.version,
+                "dataset_hash": compute_dataset_hash(dataset.records),
                 "weight": dataset.weight,
                 "record_count": len(dataset.records),
                 "accepted_count": accepted,
@@ -153,3 +156,22 @@ def degradation_feature_to_list(features: object) -> List[float]:
         observed_rate,
         baseline_rate,
     ]
+
+
+def compute_dataset_hash(records: Sequence[dict]) -> str:
+    payload = json.dumps([normalize_record_for_hash(record) for record in records], ensure_ascii=True, sort_keys=True)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def normalize_record_for_hash(record: dict) -> dict:
+    normalized = {}
+    for key, value in sorted(record.items()):
+        if isinstance(value, float):
+            normalized[key] = round(value, 10)
+        elif isinstance(value, dict):
+            normalized[key] = normalize_record_for_hash(value)
+        elif isinstance(value, list):
+            normalized[key] = [normalize_record_for_hash(item) if isinstance(item, dict) else item for item in value]
+        else:
+            normalized[key] = value
+    return normalized

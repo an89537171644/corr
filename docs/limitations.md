@@ -7,7 +7,9 @@ The MVP is intentionally engineering-first, but still simplified.
 - It is not a full SP 16 check engine.
 - Connection design, local buckling, and detailed stability checks are not fully implemented.
 - Remaining life is refined inside a local bracket, but still not derived from a full probabilistic reliability model.
+- The refinement diagnostics (`near_flat_no_crossing`, `numerically_uncertain_crossing`) improve transparency, but they are still engineering heuristics rather than a formal numerical reliability proof.
 - The `combined_enhanced` mode is an engineering approximation and must not be presented as full normative SP 16 compliance.
+- The `axial_compression_enhanced` mode improves transparency of compression assumptions, but it is still an engineering approximation rather than full code-level buckling verification.
 
 ## Hybrid forecast scope
 
@@ -39,6 +41,8 @@ The MVP is intentionally engineering-first, but still simplified.
 - Reports are reproducible and exportable to DOCX/PDF/HTML/Markdown, but the office-format export still focuses on tabular narrative rather than branded enterprise templates.
 - Analysis runs are now stored in `analysis_runs` and retrievable through `GET /analysis/{id}`, but they are persisted as full JSON snapshots rather than a fully normalized analytical schema.
 - The uncertainty band is explicit in payloads and reports, but it is still interval-based engineering guidance, not a full probabilistic reliability assessment.
+- `central/conservative/upper` trajectories are intended for engineering interpretation of the band and should not be presented as calibrated probabilistic fractiles.
+- The planned path toward a future probabilistic layer is documented separately in `docs/reliability-roadmap.md`; that roadmap must not be read as a statement that such a layer already exists in the code.
 
 ## Professional use boundary
 

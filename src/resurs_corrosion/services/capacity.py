@@ -41,9 +41,11 @@ class CapacityAssessment:
 @dataclass
 class CrossingResult:
     remaining_life_years: Optional[float]
+    status: str
     search_mode: str
     bracket_width_years: Optional[float]
     refinement_iterations: int
+    margin_span_value: Optional[float] = None
     warnings: List[str] = field(default_factory=list)
 
 
@@ -114,7 +116,7 @@ def check_axial_compression_enhanced(section: SectionProperties, material: Mater
     return ResistanceCheck(
         resistance_value=resistance,
         unit="kN",
-        resistance_mode=ResistanceMode.APPROXIMATE,
+        resistance_mode=ResistanceMode.COMPRESSION_ENHANCED,
         engineering_confidence_level=confidence,
         warnings=warnings,
     )
@@ -211,6 +213,9 @@ def calculate_resistance(section: SectionProperties, material: MaterialInput, ac
     if action.check_type == CheckType.AXIAL_COMPRESSION:
         result = check_axial_compression_basic(section, material)
         return result.resistance_value, result.unit
+    if action.check_type == CheckType.AXIAL_COMPRESSION_ENHANCED:
+        result = check_axial_compression_enhanced(section, material, action)
+        return result.resistance_value, result.unit
     if action.check_type == CheckType.BENDING_MAJOR:
         result = check_bending_major_basic(section, material)
         return result.resistance_value, result.unit
@@ -249,6 +254,8 @@ def evaluate_margin(
         resistance_check = check_axial_tension(section, material)
     elif action.check_type == CheckType.AXIAL_COMPRESSION:
         resistance_check = check_axial_compression_basic(section, material)
+    elif action.check_type == CheckType.AXIAL_COMPRESSION_ENHANCED:
+        resistance_check = check_axial_compression_enhanced(section, material, action)
     else:
         resistance_check = check_bending_major_basic(section, material)
 
@@ -293,19 +300,28 @@ def find_limit_state_crossing_details(
     if not timeline:
         return CrossingResult(
             remaining_life_years=None,
+            status="no_timeline",
             search_mode="no_timeline",
             bracket_width_years=None,
             refinement_iterations=0,
+            margin_span_value=None,
             warnings=["Временная диаграмма отсутствует; поиск предельного состояния не выполнен."],
         )
+
+    margins = [point.margin_value for point in timeline]
+    margin_span_value = max(margins) - min(margins)
+    margin_scale = max(max(abs(value) for value in margins), 1.0)
+    near_flat_threshold = max(0.05, 0.05 * margin_scale)
 
     first = timeline[0]
     if first.margin_value <= 0:
         return CrossingResult(
             remaining_life_years=0.0,
+            status="already_reached",
             search_mode="already_reached",
             bracket_width_years=0.0,
             refinement_iterations=0,
+            margin_span_value=margin_span_value,
         )
 
     warnings: List[str] = []
@@ -318,6 +334,14 @@ def find_limit_state_crossing_details(
     for previous, current in zip(timeline, timeline[1:]):
         if previous.margin_value > 0 and current.margin_value <= 0:
             bracket_width = current.age_years - previous.age_years
+            bracket_margin_delta = abs(previous.margin_value - current.margin_value)
+            status = "bracketed_crossing"
+            if bracket_margin_delta <= near_flat_threshold:
+                status = "numerically_uncertain_crossing"
+                warnings.append(
+                    "Переход в предельное состояние найден внутри почти плоского интервала; "
+                    "уточненный ресурс следует трактовать как инженерный ориентир."
+                )
             if margin_at_age is None:
                 crossing_age = interpolate_crossing_age(
                     previous.age_years,
@@ -341,17 +365,27 @@ def find_limit_state_crossing_details(
 
             return CrossingResult(
                 remaining_life_years=max(0.0, crossing_age - current_age_years),
+                status=status,
                 search_mode=mode,
                 bracket_width_years=bracket_width,
                 refinement_iterations=iterations,
+                margin_span_value=margin_span_value,
                 warnings=warnings,
             )
 
+    status = "near_flat_no_crossing" if margin_span_value <= near_flat_threshold else "no_crossing_within_horizon"
+    if status == "near_flat_no_crossing":
+        warnings.append(
+            "Кривая запаса остается почти плоской в пределах горизонта; отсутствие перехода не исключает "
+            "чувствительности результата к малым изменениям входных данных."
+        )
     return CrossingResult(
         remaining_life_years=None,
+        status=status,
         search_mode="no_crossing_within_horizon",
         bracket_width_years=None,
         refinement_iterations=0,
+        margin_span_value=margin_span_value,
         warnings=warnings,
     )
 

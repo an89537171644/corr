@@ -93,6 +93,7 @@ def test_angle_section_reference_area() -> None:
 
     assert result.properties.area_mm2 == pytest.approx(1700.0)
     assert result.properties.section_modulus_mm3 > 0
+    assert any("тонкостенной крутильной" in warning.lower() for warning in result.warnings)
 
 
 def test_tube_section_reference_area() -> None:
@@ -124,8 +125,61 @@ def test_generic_reduced_emits_warning_and_lower_confidence() -> None:
     )
 
     assert result.reducer_mode == ReducerMode.GENERIC_FALLBACK
-    assert result.engineering_confidence_level == EngineeringConfidenceLevel.C
+    assert result.engineering_confidence_level == EngineeringConfidenceLevel.D
     assert result.properties.area_mm2 == pytest.approx(1600.0)
     assert result.properties.inertia_mm4 == pytest.approx(100000.0 * (0.8**3))
     assert "generic_reduced" in result.fallback_flags
     assert any("generic_reduced" in warning for warning in result.warnings)
+    assert any("не может трактоваться как direct reducer" in warning for warning in result.warnings)
+
+
+def test_channel_reducer_keeps_positive_properties_for_thin_web() -> None:
+    result = evaluate_effective_section(
+        SectionDefinition(
+            section_type=SectionType.CHANNEL,
+            height_mm=300.0,
+            flange_width_mm=120.0,
+            web_thickness_mm=8.0,
+            flange_thickness_mm=10.0,
+        ),
+        [
+            ZoneDefinition(zone_id="top", role="top_flange", initial_thickness_mm=10.0),
+            ZoneDefinition(zone_id="bottom", role="bottom_flange", initial_thickness_mm=10.0),
+            ZoneDefinition(zone_id="web", role="web", initial_thickness_mm=8.0),
+        ],
+        [
+            ZoneState(zone_id="top", role="top_flange", corrosion_loss_mm=8.8, effective_thickness_mm=1.2),
+            ZoneState(zone_id="bottom", role="bottom_flange", corrosion_loss_mm=8.9, effective_thickness_mm=1.1),
+            ZoneState(zone_id="web", role="web", corrosion_loss_mm=7.2, effective_thickness_mm=0.8),
+        ],
+    )
+
+    assert result.properties.area_mm2 > 0
+    assert result.properties.inertia_mm4 > 0
+    assert result.properties.section_modulus_mm3 > 0
+
+
+def test_tube_reducer_keeps_positive_properties_for_thin_residual_wall() -> None:
+    result = evaluate_effective_section(
+        SectionDefinition(
+            section_type=SectionType.TUBE,
+            outer_diameter_mm=168.0,
+            wall_thickness_mm=8.0,
+        ),
+        [ZoneDefinition(zone_id="tube", role="tube_wall", initial_thickness_mm=8.0)],
+        [ZoneState(zone_id="tube", role="tube_wall", corrosion_loss_mm=7.1, effective_thickness_mm=0.9)],
+    )
+
+    assert result.properties.area_mm2 > 0
+    assert result.properties.inertia_mm4 > 0
+    assert result.properties.section_modulus_mm3 > 0
+
+
+def test_angle_definition_rejects_extremely_slender_leg_ratio() -> None:
+    with pytest.raises(ValueError, match="Angle reducer does not support extremely slender"):
+        SectionDefinition(
+            section_type=SectionType.ANGLE,
+            leg_horizontal_mm=420.0,
+            leg_vertical_mm=300.0,
+            leg_thickness_mm=5.0,
+        )

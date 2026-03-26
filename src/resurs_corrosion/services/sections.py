@@ -150,7 +150,10 @@ def evaluate_effective_section(
         leg_vertical = float(section.leg_vertical_mm)
         default_thickness = float(section.leg_thickness_mm)
         confidence = EngineeringConfidenceLevel.B
-        warnings.append("Reducer для angle использует инженерную композиционную аппроксимацию и ограничен задачами остаточной оценки.")
+        warnings.append(
+            "Reducer для angle использует инженерную композиционную аппроксимацию и ограничен задачами "
+            "остаточной оценки. Он не является solver для тонкостенной крутильной работы уголка."
+        )
         thickness, used_fallback, _ = _pick_min_with_source(
             effective_map,
             ["angle_leg", "angle_leg_horizontal", "angle_leg_vertical", "leg", "flange", "web"],
@@ -238,8 +241,11 @@ def evaluate_effective_section(
         )
 
     reducer_mode = ReducerMode.GENERIC_FALLBACK
-    confidence = EngineeringConfidenceLevel.C
-    warnings.append("Использован generic_reduced fallback; результат применим только как укрупненная инженерная оценка.")
+    confidence = EngineeringConfidenceLevel.D
+    warnings.append(
+        "Использован generic_reduced fallback; результат применим только как укрупненная инженерная оценка "
+        "и не может трактоваться как direct reducer нормативного профиля."
+    )
     fallback_flags.append("generic_reduced")
     reference = float(section.reference_thickness_mm)
     thickness_ratios: List[float] = []

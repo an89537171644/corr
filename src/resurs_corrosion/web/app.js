@@ -619,9 +619,11 @@ function renderCalculationResult(result) {
     return;
   }
 
+  const selectedElement = getSelectedElement();
   refs.calculationSummary.classList.remove("empty-block");
   refs.calculationSummary.innerHTML = `
     <article class="summary-card"><span>Среда</span><strong>${escapeHtml(result.environment_category)}</strong></article>
+    <article class="summary-card"><span>Профиль сечения</span><strong>${selectedElement ? escapeHtml(translateSectionType(selectedElement.section.section_type)) : "-"}</strong></article>
     <article class="summary-card"><span>Режим прогноза</span><strong>${renderStatusPill(translateForecastMode(result.forecast_mode), toneForForecastMode(result.forecast_mode))}</strong></article>
     <article class="summary-card"><span>Количество сценариев</span><strong>${result.results.length}</strong></article>
     <article class="summary-card"><span>Доля превышений</span><strong>${formatNumber(result.risk_profile.exceedance_share, 3)}</strong></article>
@@ -631,15 +633,20 @@ function renderCalculationResult(result) {
     <article class="summary-card"><span>Оценка скорости</span><strong>${renderStatusPill(translateRateFitMode(result.rate_fit_mode), toneForRateFitMode(result.rate_fit_mode))}</strong></article>
     <article class="summary-card"><span>Режим ML</span><strong>${renderStatusPill(translateMlMode(result.ml_mode), toneForMlMode(result.ml_mode))}</strong></article>
     <article class="summary-card"><span>Режим риска</span><strong>${renderStatusPill(translateRiskMode(result.risk_mode), toneForRiskMode(result.risk_mode))}</strong></article>
+    <article class="summary-card"><span>Уровень uncertainty</span><strong>${renderStatusPill(translateUncertaintyLevel(result.uncertainty_level), toneForUncertaintyLevel(result.uncertainty_level))}</strong></article>
+    <article class="summary-card"><span>Источник uncertainty</span><strong>${escapeHtml(translateUncertaintySource(result.uncertainty_source))}</strong></article>
     <article class="summary-card"><span>Интервал ресурса</span><strong>${formatLifeInterval(result.life_interval_years)}</strong></article>
     <article class="summary-card"><span>Поиск предельного состояния</span><strong>${escapeHtml(translateCrossingMode(result.crossing_search_mode))}</strong></article>
+    <article class="summary-card"><span>Статус уточнения</span><strong>${escapeHtml(translateRefinementStatus(result.refinement_diagnostics?.status))}</strong></article>
     <article class="summary-card"><span>ML metadata</span><strong>${result.ml_candidate_count} | ${escapeHtml(result.ml_blend_mode || "-")}</strong></article>
     <article class="summary-card"><span>Использовано данных</span><strong>${result.used_inspection_count} обслед. / ${result.used_measurement_count} замеров</strong></article>
     <article class="summary-card"><span>Следующее обследование</span><strong>${formatNumber(result.risk_profile.next_inspection_within_years, 2)} лет</strong></article>
     <article class="summary-card"><span>Рекомендация</span><strong>${escapeHtml(result.risk_profile.recommended_action)}</strong></article>
+    <article class="summary-card"><span>Fallback-статус</span><strong>${renderFallbackOverview(result.fallback_flags)}</strong></article>
     <article class="summary-card summary-card-wide"><span>Основания uncertainty band</span><strong>${escapeHtml((result.uncertainty_basis || []).join("; ") || "-")}</strong></article>
     ${renderWarningCard("Ограничения и предупреждения", result.warnings, result.fallback_flags, "Явные warning/fallback-флаги не зарегистрированы.")}
     ${renderWarningCard("Неопределенность и риск", result.uncertainty_warnings, [], "Дополнительные uncertainty warnings не зарегистрированы.")}
+    ${renderDiagnosticCard(result, selectedElement)}
   `;
 
   refs.scenarioTable.classList.remove("empty-block");
@@ -654,7 +661,7 @@ function renderCalculationResult(result) {
             <td>${formatNumber(row.demand_value, 3)} ${escapeHtml(row.demand_unit)}</td>
             <td>${formatNumber(row.margin_value, 3)}</td>
             <td>${renderLifeCell(row)}</td>
-            <td>${escapeHtml(translateCrossingMode(row.crossing_search_mode))}<br><small>${row.crossing_refinement_iterations || 0} ит.</small></td>
+            <td>${escapeHtml(translateCrossingMode(row.crossing_search_mode))}<br><small>${escapeHtml(translateRefinementStatus(row.refinement_diagnostics?.status))} | ${row.crossing_refinement_iterations || 0} ит.</small></td>
             <td>${renderScenarioModes(row)}</td>
             <td>${renderScenarioWarnings(row)}</td>
             <td>${row.limit_state_reached_within_horizon ? "Достигнуто" : "Не достигнуто"}</td>
@@ -666,7 +673,7 @@ function renderCalculationResult(result) {
 
   const baseline = result.results[0];
   refs.timelineChart.classList.remove("empty-block");
-  refs.timelineChart.innerHTML = renderTimelineChart(baseline.timeline, baseline.resistance_unit);
+  refs.timelineChart.innerHTML = renderTimelineChart(baseline.uncertainty_trajectories || baseline.timeline, baseline.resistance_unit);
 }
 
 function renderReportPreview() {
@@ -726,6 +733,7 @@ function renderReportPreview() {
       <article class="summary-card"><span>Рекомендованное действие</span><strong>${escapeHtml(previewResult ? previewResult.risk_profile.recommended_action : "Расчет еще не выполнен")}</strong></article>
       <article class="summary-card"><span>Класс уверенности</span><strong>${previewResult ? renderStatusPill(`Класс ${escapeHtml(previewResult.engineering_confidence_level)}`, toneForConfidence(previewResult.engineering_confidence_level)) : "Ожидает расчет"}</strong></article>
       <article class="summary-card"><span>Режим риска</span><strong>${previewResult ? renderStatusPill(translateRiskMode(previewResult.risk_mode), toneForRiskMode(previewResult.risk_mode)) : "Ожидает расчет"}</strong></article>
+      <article class="summary-card"><span>Уровень uncertainty</span><strong>${previewResult ? renderStatusPill(translateUncertaintyLevel(previewResult.uncertainty_level), toneForUncertaintyLevel(previewResult.uncertainty_level)) : "Ожидает расчет"}</strong></article>
       <article class="summary-card"><span>Интервал ресурса</span><strong>${previewResult ? formatLifeInterval(previewResult.life_interval_years) : "Ожидает расчет"}</strong></article>
       <article class="summary-card"><span>Режимы</span><strong>${previewResult ? renderModeStack([
         { label: translateForecastMode(previewResult.forecast_mode), tone: toneForForecastMode(previewResult.forecast_mode) },
@@ -760,6 +768,8 @@ function renderReportPreview() {
         <div class="preview-line"><strong>Оценка скорости</strong><span>${previewResult ? escapeHtml(translateRateFitMode(previewResult.rate_fit_mode)) : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>Режим ML</strong><span>${previewResult ? escapeHtml(translateMlMode(previewResult.ml_mode)) : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>Поиск предельного состояния</strong><span>${previewResult ? escapeHtml(translateCrossingMode(previewResult.crossing_search_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Статус уточнения</strong><span>${previewResult ? escapeHtml(translateRefinementStatus(previewResult.refinement_diagnostics?.status)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Источник uncertainty</strong><span>${previewResult ? escapeHtml(translateUncertaintySource(previewResult.uncertainty_source)) : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>Основания uncertainty band</strong><span>${previewResult ? escapeHtml((previewResult.uncertainty_basis || []).join("; ") || "-") : "Ожидает расчет"}</span></div>
         <div class="preview-line"><strong>История данных</strong><span>${previewResult ? `${previewResult.used_inspection_count} обслед. / ${previewResult.used_measurement_count} замеров` : "Ожидает расчет"}</span></div>
       </section>
@@ -787,15 +797,17 @@ function renderLifeCell(row) {
   const interval = formatLifeInterval(row.life_interval_years);
   const nominal = formatMaybeNumber(row.remaining_life_nominal_years, 2);
   const conservative = formatMaybeNumber(row.remaining_life_conservative_years, 2);
-  if (interval === "-" && nominal === "-" && conservative === "-") {
+  const upper = formatMaybeNumber(row.life_interval_years?.upper_years, 2);
+  if (interval === "-" && nominal === "-" && conservative === "-" && upper === "-") {
     return "-";
   }
-  return `${interval}<br><small>ном. ${nominal} / конс. ${conservative}</small>`;
+  return `${interval}<br><small>ном. ${nominal} / конс. ${conservative} / верх. ${upper}</small>`;
 }
 
 function renderScenarioModes(row) {
   return renderModeStack([
     { label: `Класс ${row.engineering_confidence_level}`, tone: toneForConfidence(row.engineering_confidence_level) },
+    { label: `UQ ${translateUncertaintyLevel(row.uncertainty_level)}`, tone: toneForUncertaintyLevel(row.uncertainty_level) },
     { label: translateResistanceMode(row.resistance_mode), tone: toneForResistanceMode(row.resistance_mode) },
     { label: translateReducerMode(row.reducer_mode), tone: toneForReducerMode(row.reducer_mode) },
   ]);
@@ -805,6 +817,7 @@ function renderScenarioWarnings(row) {
   const items = [
     ...(row.warnings || []).map((warning) => `Предупреждение: ${warning}`),
     ...(row.uncertainty_warnings || []).map((warning) => `Uncertainty: ${warning}`),
+    ...((row.refinement_diagnostics?.warnings || []).map((warning) => `Refinement: ${warning}`)),
     ...((row.fallback_flags || []).map((flag) => `Fallback: ${translateFallbackFlag(flag)}`)),
   ];
   if (!items.length) {
@@ -833,6 +846,83 @@ function renderWarningPanel(warnings, fallbackFlags, emptyText) {
   return `<ul class="warning-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
 }
 
+function renderDiagnosticCard(result, element) {
+  const profileItems = buildProfileLimitationItems(result, element);
+  return `
+    <article class="summary-card summary-card-wide">
+      <span>Расширенная диагностика</span>
+      <div class="diagnostic-stack">
+        ${renderDiagnosticPanel("Rate fit и источники данных", buildRateFitDiagnosticItems(result), true)}
+        ${renderDiagnosticPanel("Uncertainty band и refinement", buildUncertaintyDiagnosticItems(result))}
+        ${renderDiagnosticPanel("Профиль, reducer и применимость", profileItems)}
+      </div>
+    </article>
+  `;
+}
+
+function renderDiagnosticPanel(title, items, open = false) {
+  const body = items.length
+    ? `<ul class="diagnostic-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+    : '<p class="warning-empty">Дополнительная диагностика для этого блока не требуется.</p>';
+  return `<details class="diagnostic-panel"${open ? " open" : ""}><summary>${escapeHtml(title)}</summary>${body}</details>`;
+}
+
+function buildRateFitDiagnosticItems(result) {
+  return (result.zone_observations || []).map((observation) => {
+    const warnings = observation.warnings?.length ? `; warnings: ${observation.warnings.join(" | ")}` : "";
+    return `${observation.zone_id}: ${translateRateFitMode(observation.rate_fit_mode)}, source=${observation.source}, n=${observation.fit_sample_size || observation.used_points_count || 0}, span=${formatMaybeNumber(observation.history_span_years, 2)} y${warnings}`;
+  });
+}
+
+function buildUncertaintyDiagnosticItems(result) {
+  const items = [
+    `uncertainty source: ${translateUncertaintySource(result.uncertainty_source)}`,
+    `uncertainty level: ${translateUncertaintyLevel(result.uncertainty_level)}`,
+    `refinement status: ${translateRefinementStatus(result.refinement_diagnostics?.status)}`,
+    `crossing mode: ${translateCrossingMode(result.crossing_search_mode)}`,
+    `life interval: ${formatLifeInterval(result.life_interval_years)}`,
+  ];
+  if (result.refinement_diagnostics?.bracket_width_years != null) {
+    items.push(`bracket width: ${formatMaybeNumber(result.refinement_diagnostics.bracket_width_years, 2)} years`);
+  }
+  if (result.uncertainty_basis?.length) {
+    items.push(`basis: ${result.uncertainty_basis.join(" | ")}`);
+  }
+  if (result.refinement_diagnostics?.warnings?.length) {
+    items.push(`refinement warnings: ${result.refinement_diagnostics.warnings.join(" | ")}`);
+  }
+  return items;
+}
+
+function buildProfileLimitationItems(result, element) {
+  const items = [];
+  if (element?.section?.section_type) {
+    items.push(`profile: ${translateSectionType(element.section.section_type)}`);
+  }
+  items.push(`reducer mode: ${translateReducerMode(result.reducer_mode)}`);
+  items.push(`resistance mode: ${translateResistanceMode(result.resistance_mode)}`);
+  items.push(`confidence: class ${result.engineering_confidence_level}`);
+  if (result.fallback_flags?.length) {
+    items.push(`fallback flags: ${result.fallback_flags.map((flag) => translateFallbackFlag(flag)).join(" | ")}`);
+  }
+  if (element?.section?.section_type === "angle") {
+    items.push("angle reducer remains an engineering composite and is not a thin-walled torsional solver");
+  }
+  if (result.reducer_mode === "generic_fallback") {
+    items.push("generic_reduced is an explicit fallback and should not be interpreted as a direct normative reducer");
+  }
+  return items;
+}
+
+function renderFallbackOverview(fallbackFlags) {
+  if (!fallbackFlags || !fallbackFlags.length) {
+    return renderStatusPill("fallback нет", "ok");
+  }
+  const visible = fallbackFlags.slice(0, 2).map((flag) => translateFallbackFlag(flag));
+  const suffix = fallbackFlags.length > 2 ? ` +${fallbackFlags.length - 2}` : "";
+  return `${renderStatusPill("fallback active", "danger")}<br><small>${escapeHtml(visible.join("; "))}${escapeHtml(suffix)}</small>`;
+}
+
 function renderModeStack(items) {
   return `<span class="meta-stack">${items.filter(Boolean).map((item) => renderStatusPill(item.label, item.tone)).join("")}</span>`;
 }
@@ -851,6 +941,7 @@ function translateForecastMode(mode) {
 function translateResistanceMode(mode) {
   if (mode === "direct") return "Прямой";
   if (mode === "approximate") return "Приближенный";
+  if (mode === "compression_enhanced") return "Сжатие enhanced";
   if (mode === "combined_basic") return "Комбинированный basic";
   if (mode === "combined_enhanced") return "Комбинированный enhanced";
   return mode || "-";
@@ -858,7 +949,7 @@ function translateResistanceMode(mode) {
 
 function translateReducerMode(mode) {
   if (mode === "direct") return "Прямой редьюсер";
-  if (mode === "generic_fallback") return "Fallback generic";
+  if (mode === "generic_fallback") return "Только fallback generic_reduced";
   return mode || "-";
 }
 
@@ -877,6 +968,22 @@ function translateRiskMode(mode) {
   return mode || "-";
 }
 
+function translateUncertaintyLevel(level) {
+  if (level === "low") return "Низкий";
+  if (level === "moderate") return "Умеренный";
+  if (level === "high") return "Высокий";
+  if (level === "very_high") return "Очень высокий";
+  return level || "-";
+}
+
+function translateUncertaintySource(source) {
+  if (source === "scenario_library_only") return "Только сценарная библиотека";
+  if (source === "inspection_history_band") return "Полоса по данным обследований";
+  if (source === "inspection_history_limited") return "Ограниченная история обследований";
+  if (source === "inspection_history_with_baseline_fallback") return "История с baseline fallback";
+  return source || "-";
+}
+
 function translateCrossingMode(mode) {
   if (mode === "no_timeline") return "Нет временной диаграммы";
   if (mode === "already_reached") return "Уже достигнуто";
@@ -885,6 +992,16 @@ function translateCrossingMode(mode) {
   if (mode === "no_crossing_within_horizon") return "В горизонте не найдено";
   if (mode === "coarse_only") return "Грубая оценка";
   return mode || "-";
+}
+
+function translateRefinementStatus(status) {
+  if (status === "no_timeline") return "Нет временной диаграммы";
+  if (status === "already_reached") return "Уже достигнуто";
+  if (status === "bracketed_crossing") return "Устойчивый интервал";
+  if (status === "numerically_uncertain_crossing") return "Численно чувствительный интервал";
+  if (status === "near_flat_no_crossing") return "Почти плоская кривая";
+  if (status === "no_crossing_within_horizon") return "В горизонте не найдено";
+  return status || "-";
 }
 
 function translateMlMode(mode) {
@@ -896,7 +1013,7 @@ function translateMlMode(mode) {
 
 function translateFallbackFlag(flag) {
   if (flag === "generic_reduced") {
-    return "Эффективное сечение получено через generic_reduced.";
+    return "Эффективное сечение получено через generic_reduced как явный fallback-режим.";
   }
   if (flag && flag.startsWith("forecast_source:") && flag.endsWith(":baseline")) {
     const parts = flag.split(":");
@@ -923,6 +1040,7 @@ function toneForForecastMode(mode) {
 
 function toneForResistanceMode(mode) {
   if (mode === "direct") return "ok";
+  if (mode === "compression_enhanced") return "neutral";
   if (mode === "combined_enhanced") return "neutral";
   if (mode === "combined_basic") return "warn";
   if (mode === "approximate") return "warn";
@@ -931,6 +1049,7 @@ function toneForResistanceMode(mode) {
 
 function toneForReducerMode(mode) {
   if (mode === "direct") return "ok";
+  if (mode === "generic_fallback") return "danger";
   return "warn";
 }
 
@@ -948,13 +1067,28 @@ function toneForRiskMode(mode) {
   return "neutral";
 }
 
+function toneForUncertaintyLevel(level) {
+  if (level === "low") return "ok";
+  if (level === "moderate") return "neutral";
+  if (level === "high") return "warn";
+  return "danger";
+}
+
 function toneForMlMode(mode) {
   if (mode === "trained") return "ok";
   if (mode === "heuristic") return "neutral";
   return "warn";
 }
 
-function renderTimelineChart(timeline, unit) {
+function renderTimelineChart(trajectoryInput, unit) {
+  const trajectories = Array.isArray(trajectoryInput)
+    ? { central: trajectoryInput, conservative: trajectoryInput, upper: trajectoryInput }
+    : {
+        central: trajectoryInput?.central || [],
+        conservative: trajectoryInput?.conservative || trajectoryInput?.central || [],
+        upper: trajectoryInput?.upper || trajectoryInput?.central || [],
+      };
+  const timeline = trajectories.central || [];
   if (!timeline.length) {
     return "Данные временной диаграммы отсутствуют.";
   }
@@ -964,7 +1098,9 @@ function renderTimelineChart(timeline, unit) {
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = height - margin.top - margin.bottom;
   const ages = timeline.map((point) => point.age_years);
-  const values = timeline.flatMap((point) => [point.resistance_value, point.demand_value]);
+  const conservativeValues = (trajectories.conservative || []).map((point) => point.resistance_value);
+  const upperValues = (trajectories.upper || []).map((point) => point.resistance_value);
+  const values = timeline.flatMap((point) => [point.resistance_value, point.demand_value]).concat(conservativeValues, upperValues);
   const minAge = Math.min(...ages);
   const maxAge = Math.max(...ages);
   const minValue = Math.min(...values);
@@ -974,6 +1110,8 @@ function renderTimelineChart(timeline, unit) {
   const scaleX = (value) => margin.left + ((value - minAge) / rangeAge) * innerWidth;
   const scaleY = (value) => margin.top + innerHeight - ((value - minValue) / rangeValue) * innerHeight;
   const resistancePoints = timeline.map((point) => `${scaleX(point.age_years)},${scaleY(point.resistance_value)}`).join(" ");
+  const conservativePoints = (trajectories.conservative || []).map((point) => `${scaleX(point.age_years)},${scaleY(point.resistance_value)}`).join(" ");
+  const upperPoints = (trajectories.upper || []).map((point) => `${scaleX(point.age_years)},${scaleY(point.resistance_value)}`).join(" ");
   const demandPoints = timeline.map((point) => `${scaleX(point.age_years)},${scaleY(point.demand_value)}`).join(" ");
   const ticks = 5;
   const gridLines = Array.from({ length: ticks + 1 }, (_, index) => {
@@ -988,15 +1126,19 @@ function renderTimelineChart(timeline, unit) {
   }).join("");
   return `
     <div class="legend">
-      <span class="legend-item"><span class="legend-swatch" style="background:#1f6f8b"></span>Несущая способность (${escapeHtml(unit)})</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:#1f6f8b"></span>R central (${escapeHtml(unit)})</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:#4d9968"></span>R conservative (${escapeHtml(unit)})</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:#7a5cc2"></span>R upper (${escapeHtml(unit)})</span>
       <span class="legend-item"><span class="legend-swatch" style="background:#b6542d"></span>Воздействие (${escapeHtml(unit)})</span>
     </div>
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График изменения несущей способности и воздействия">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График изменения инженерных траекторий сопротивления и воздействия">
       ${gridLines}
       ${xTicks}
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#172126" stroke-width="1.2"></line>
       <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#172126" stroke-width="1.2"></line>
       <polyline fill="none" stroke="#1f6f8b" stroke-width="3" points="${resistancePoints}"></polyline>
+      <polyline fill="none" stroke="#4d9968" stroke-width="2.5" stroke-dasharray="8 6" points="${conservativePoints}"></polyline>
+      <polyline fill="none" stroke="#7a5cc2" stroke-width="2.5" stroke-dasharray="3 5" points="${upperPoints}"></polyline>
       <polyline fill="none" stroke="#b6542d" stroke-width="3" points="${demandPoints}"></polyline>
       <text x="${width / 2}" y="${height - 6}" text-anchor="middle" fill="#5d696f" font-size="12">Возраст, лет</text>
     </svg>
@@ -1023,18 +1165,25 @@ function renderReports(artifacts) {
 
 function prependImportSummary(summary) {
   refs.importResults.classList.remove("empty-block");
-  const errors = summary.errors && summary.errors.length
-    ? `<div class="registry-meta">${summary.errors.map((error) => `${escapeHtml(error.row_reference)}: ${escapeHtml(error.message)}`).join("<br>")}</div>`
-    : "";
+  const warnings = renderImportIssueList(summary.warning_details, "warning");
+  const errors = renderImportIssueList(summary.errors, "error");
   refs.importResults.innerHTML = `
     <div class="file-link">
       <div>
         <strong>${escapeHtml(translateDatasetName(summary.dataset))}</strong>
-        <small>${summary.source_format.toUpperCase()} | обработано ${summary.rows_processed} | создано ${summary.created_count} | обновлено ${summary.updated_count}</small>
+        <small>${summary.source_format.toUpperCase()} | обработано ${summary.rows_processed} | создано ${summary.created_count} | обновлено ${summary.updated_count} | warnings ${summary.warning_count}</small>
+        ${warnings}
         ${errors}
       </div>
     </div>
   ` + refs.importResults.innerHTML;
+}
+
+function renderImportIssueList(items, tone) {
+  if (!items || !items.length) {
+    return "";
+  }
+  return `<div class="registry-meta import-issues ${tone}">${items.map((item) => `${escapeHtml(item.row_reference)}${item.code ? ` [${escapeHtml(item.code)}]` : ""}: ${escapeHtml(item.message)}`).join("<br>")}</div>`;
 }
 
 function resetAssetForm(showNoticeFlag = false) {
@@ -1231,6 +1380,10 @@ function getLatestInspection() {
   return [...state.inspections].sort((left, right) => String(right.performed_at).localeCompare(String(left.performed_at)))[0];
 }
 
+function getSelectedElement() {
+  return state.elements.find((item) => item.id === state.selectedElementId) || null;
+}
+
 function setFormValue(form, name, value) {
   if (!form.elements[name]) {
     return;
@@ -1331,6 +1484,16 @@ function translateDatasetName(dataset) {
   if (dataset === "elements") return "элементы";
   if (dataset === "inspections") return "обследования";
   return dataset;
+}
+
+function translateSectionType(sectionType) {
+  if (sectionType === "plate") return "Лист";
+  if (sectionType === "i_section") return "Двутавр";
+  if (sectionType === "channel") return "Швеллер";
+  if (sectionType === "angle") return "Уголок";
+  if (sectionType === "tube") return "Труба";
+  if (sectionType === "generic_reduced") return "Обобщенное fallback";
+  return sectionType || "-";
 }
 
 function todayIso() {

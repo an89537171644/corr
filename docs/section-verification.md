@@ -30,8 +30,9 @@ Each test verifies one or more of the following:
 Stage 3 extends this with monotonicity checks in `tests/test_section_reducer_monotonicity.py`:
 
 - if effective thickness decreases, `A_eff`, `I_eff`, and `W_eff` may not increase
-- reference profiles are checked across `plate`, `i_section`, and `tube`
+- reference profiles are checked across `plate`, `i_section`, `channel`, `angle`, and `tube`
 - warning/confidence downgrade remains explicit for approximated reducers
+- edge domains near thin residual walls, webs, and legs remain positive and visible in diagnostics
 
 ## Reducer notes
 
@@ -48,12 +49,13 @@ Stage 3 extends this with monotonicity checks in `tests/test_section_reducer_mon
 ### `channel`
 
 - same reducer family as `i_section`, but with one-flange symmetry assumptions
-- verification focuses on monotone property loss and positive residual geometry
+- verification focuses on monotone property loss, thin-web edge cases, and positive residual geometry
 
 ### `angle`
 
 - treated as an engineering composite of two legs minus overlap
 - intended for residual assessment, not full thin-walled torsion analysis
+- very slender leg/thickness ratios above 60 are rejected at schema-validation level as outside the current reducer domain
 
 ### `tube`
 

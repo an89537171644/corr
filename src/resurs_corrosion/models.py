@@ -47,6 +47,24 @@ class ElementModel(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     asset: Mapped["AssetModel"] = relationship(back_populates="elements")
+    section_snapshot: Mapped[Optional["ElementSectionSnapshotModel"]] = relationship(
+        back_populates="element",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    material_snapshot: Mapped[Optional["ElementMaterialSnapshotModel"]] = relationship(
+        back_populates="element",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
+    action_snapshot: Mapped[Optional["ElementActionSnapshotModel"]] = relationship(
+        back_populates="element",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
     zones: Mapped[List["ZoneModel"]] = relationship(
         back_populates="element",
         cascade="all, delete-orphan",
@@ -65,6 +83,45 @@ class ElementModel(Base):
         passive_deletes=True,
         order_by="AnalysisRunModel.id.desc()",
     )
+
+
+class ElementSectionSnapshotModel(Base):
+    __tablename__ = "element_section_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    element_id: Mapped[int] = mapped_column(ForeignKey("elements.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False, default="section.v2")
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="json_shadow")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    element: Mapped["ElementModel"] = relationship(back_populates="section_snapshot")
+
+
+class ElementMaterialSnapshotModel(Base):
+    __tablename__ = "element_material_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    element_id: Mapped[int] = mapped_column(ForeignKey("elements.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False, default="material.v2")
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="json_shadow")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    element: Mapped["ElementModel"] = relationship(back_populates="material_snapshot")
+
+
+class ElementActionSnapshotModel(Base):
+    __tablename__ = "element_action_snapshots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    element_id: Mapped[int] = mapped_column(ForeignKey("elements.id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    schema_version: Mapped[str] = mapped_column(String(64), nullable=False, default="action.v2")
+    payload: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="json_shadow")
+    synced_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    element: Mapped["ElementModel"] = relationship(back_populates="action_snapshot")
 
 
 class ZoneModel(Base):

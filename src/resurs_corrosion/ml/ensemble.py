@@ -7,7 +7,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple
 
-from .candidates import CandidateRuntimeModel, fit_candidate_models
+from .candidates import CandidateRuntimeModel, fit_candidate_registry
 from .training import build_training_matrix, degradation_feature_to_list, normalize_training_input
 
 
@@ -30,6 +30,9 @@ class TrainingSummary:
     rejected_row_count: int = 0
     candidate_names: list[str] = field(default_factory=list)
     candidate_registry: list[dict] = field(default_factory=list)
+    accepted_candidate_count: int = 0
+    rejected_candidate_count: int = 0
+    acceptance_policy: dict = field(default_factory=lambda: {"mae_threshold": 0.18, "minimum_rows": 3})
     execution_mode: str = "heuristic"
     blend_mode: str = "heuristic_only"
     interval_source: str = "heuristic_band"
@@ -45,7 +48,7 @@ class HybridRateEnsembleModel:
     """
 
     name = "hybrid_rate_ensemble"
-    version = "0.2.0"
+    version = "0.3.0"
 
     def __init__(
         self,
@@ -67,23 +70,51 @@ class HybridRateEnsembleModel:
             execution_mode="heuristic",
         )
 
-        if len(matrix.targets) < 3:
+        minimum_rows = int(summary.acceptance_policy.get("minimum_rows", 3))
+        if len(matrix.targets) < minimum_rows:
             self.fitted = True
             self.candidate_models = []
             summary.execution_mode = "fallback"
             summary.blend_mode = "heuristic_only"
             summary.interval_source = "heuristic_band"
+            summary.candidate_registry = [
+                {
+                    "name": "candidate_pool",
+                    "backend": "ensemble",
+                    "family": "governance",
+                    "status": "rejected",
+                    "reason": "insufficient_rows",
+                }
+            ]
+            summary.rejected_candidate_count = 1
             self.training_summary = summary
             return self
 
-        self.candidate_models = fit_candidate_models(matrix.features, matrix.targets, matrix.sample_weights)
+        candidate_registry = fit_candidate_registry(
+            matrix.features,
+            matrix.targets,
+            matrix.sample_weights,
+            acceptance_mae_threshold=float(summary.acceptance_policy.get("mae_threshold", 0.18)),
+        )
+        self.candidate_models = [
+            item.runtime_model for item in candidate_registry if item.status == "accepted" and item.runtime_model is not None
+        ]
         self.fitted = True
+        summary.candidate_names = [candidate.name for candidate in self.candidate_models]
+        summary.candidate_registry = [
+            {
+                "name": item.name,
+                "backend": item.backend,
+                "family": item.family,
+                "status": item.status,
+                "reason": item.reason,
+                "train_mae": item.train_mae,
+            }
+            for item in candidate_registry
+        ]
+        summary.accepted_candidate_count = sum(1 for item in candidate_registry if item.status == "accepted")
+        summary.rejected_candidate_count = sum(1 for item in candidate_registry if item.status != "accepted")
         if self.candidate_models:
-            summary.candidate_names = [candidate.name for candidate in self.candidate_models]
-            summary.candidate_registry = [
-                {"name": candidate.name, "backend": candidate.backend, "family": candidate.family}
-                for candidate in self.candidate_models
-            ]
             summary.execution_mode = "trained"
             summary.blend_mode = "candidate_mean_plus_heuristic_anchor"
             summary.interval_source = "candidate_spread_plus_heuristic_padding"
@@ -175,9 +206,12 @@ class HybridRateEnsembleModel:
             "candidate_count": len(self.candidate_models),
             "candidate_names": list(self.training_summary.candidate_names),
             "candidate_registry": list(self.training_summary.candidate_registry),
+            "accepted_candidate_count": self.training_summary.accepted_candidate_count,
+            "rejected_candidate_count": self.training_summary.rejected_candidate_count,
             "dataset_journal": list(self.training_summary.dataset_journal),
             "accepted_row_count": self.training_summary.accepted_row_count,
             "rejected_row_count": self.training_summary.rejected_row_count,
+            "acceptance_policy": dict(self.training_summary.acceptance_policy),
             "blend_mode": self.training_summary.blend_mode,
             "interval_source": self.training_summary.interval_source,
         }

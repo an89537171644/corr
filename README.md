@@ -14,11 +14,15 @@ remaining service life.
 - Robust degradation-rate fitting with `baseline_fallback`, `single_observation`, `two_point`, and `robust_history_fit` modes.
 - Stage 3 degradation diagnostics with `robust_history_fit_low_confidence`, fit quality metrics, history span, and explicit outlier suppression warnings.
 - Hybrid degradation forecast that starts from the last observed state and applies an explicit staged rate-correction module.
-- Engineering uncertainty band reporting with `risk_mode`, `life_interval_years`, `uncertainty_basis`, and `uncertainty_warnings`.
+- Trained ML governance with candidate acceptance policy, accepted/rejected registry, and dataset journaling hashes for demo training runs.
+- Structured unit normalization with compatibility aliases, strict validation errors, and `normalization_metadata` on normalized payloads.
+- Engineering uncertainty band reporting with `risk_mode`, `life_interval_years`, `uncertainty_level`, `uncertainty_source`, structured refinement diagnostics, and `uncertainty_warnings`.
 - Automatic engineering report generation in `DOCX`, `PDF`, `HTML`, and `Markdown` for stored analyses.
 - Import from `CSV/XLSX` for assets, elements with zones, and inspections with measurements.
+- Structured import warnings for contradictory chronology, weak histories, and suspicious thickness rebounds.
 - Built-in browser UI served directly by FastAPI at `/`.
 - Alembic migrations and controlled schema initialization modes for SQLite and PostgreSQL.
+- Shadow component tables for `section`, `material`, and `action` with compatibility adapters over the legacy JSON storage path.
 - Domain models for object, element, zones, inspections, scenarios, and calculation input.
 - Baseline corrosion model:
   - power-law thickness loss `delta(t) = k * t^b`
@@ -38,18 +42,25 @@ remaining service life.
 - engineering-basic combined axial force and bending interaction check
 - enhanced engineering combined axial force and bending interaction check with explicit slenderness-related inputs
 - Refined remaining-life search with coarse scan, local bracket, and monotone root refinement.
+- Structured remaining-life refinement diagnostics that distinguish `bracketed_crossing`, `near_flat_no_crossing`, and numerically uncertain crossings.
+- Explicit `central/conservative/upper` engineering trajectories for resistance and life guidance.
 - Analysis payload, reports, and UI now expose:
   - `engineering_confidence_level`
   - `resistance_mode`
   - `reducer_mode`
+  - `uncertainty_level`
+  - `uncertainty_source`
+  - `refinement_diagnostics`
   - `rate_fit_mode`
   - `ml_mode`
   - `warnings[]`
   - `fallback_flags[]`
 - Scenario library for `C2` to `C5` environments and first-line what-if cases.
 - Three bundled demo datasets and one-command demo runner under `data_examples/` and `scripts/`.
+- One-command end-to-end acceptance suite with golden demo expectations under `scripts/run_acceptance_suite.py`.
+- One-command ML demo training script under `scripts/train_demo_model.py` that emits a saved model artifact and summary JSON.
 - Root project guidance in `AGENTS.md` and project-scoped Codex settings in `.codex/config.toml`.
-- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/limitations.md`, `docs/section-verification.md`, `docs/data-normalization-roadmap.md`, and `docs/remediation_stage2.md`.
+- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/limitations.md`, `docs/reliability-roadmap.md`, `docs/section-verification.md`, `docs/data-normalization-roadmap.md`, and `docs/remediation_stage2.md`.
 - Pytest coverage for baseline formulas, API integration, reducers, rate fitting, refined limit-state search, combined checks, and report warnings.
 - Additional stage 3 regression coverage for enhanced resistance mode, uncertainty band, units normalization, reducer monotonicity, ML metadata, and report payload flags.
 
@@ -62,6 +73,7 @@ remaining service life.
 - The hybrid forecast preserves a deterministic heuristic anchor and can evolve
   to trained candidate models, but it is still not a final calibrated field model.
 - The engineering uncertainty band is interval-based and not a full probabilistic reliability model.
+- The staged boundary between implemented interval guidance and planned reliability theory is fixed in `docs/reliability-roadmap.md`.
 - For unsupported profiles, `generic_reduced` applies a conservative thickness
   reduction factor to user-supplied initial section properties and is surfaced as a fallback mode.
 - The MVP stores section, material, and action definitions as structured JSON
@@ -89,6 +101,12 @@ Run the bundled demo case:
 
 ```powershell
 python scripts/run_demo_case.py
+```
+
+Run the bundled end-to-end acceptance suite:
+
+```powershell
+python scripts/run_acceptance_suite.py
 ```
 
 Alternative bundled demo inputs:
@@ -173,6 +191,7 @@ The root route `/` now serves a lightweight web application with:
 - manual creation and update forms for assets, elements, zones, and measurements
 - engineering analysis with scenario table and timeline chart
 - confidence classes, mode badges, and explicit warning/fallback panels
+- expandable diagnostics for rate fit, uncertainty, and profile applicability
 - report export links for `DOCX/PDF/HTML/Markdown`
 - bulk upload entry points for `CSV/XLSX`
 
@@ -182,10 +201,12 @@ The root route `/` now serves a lightweight web application with:
 - [docs/domain-model.md](docs/domain-model.md)
 - [docs/calculation-model.md](docs/calculation-model.md)
 - [docs/ml-pipeline.md](docs/ml-pipeline.md)
+- [docs/engineering-applicability.md](docs/engineering-applicability.md)
 - [docs/rate-fitting.md](docs/rate-fitting.md)
 - [docs/limitations.md](docs/limitations.md)
 - [docs/section-verification.md](docs/section-verification.md)
 - [docs/data-normalization-roadmap.md](docs/data-normalization-roadmap.md)
+- [docs/acceptance-suite.md](docs/acceptance-suite.md)
 - [docs/remediation_stage2.md](docs/remediation_stage2.md)
 - [docs/remediation_stage3.md](docs/remediation_stage3.md)
 - [docs/remediation_checklist.md](docs/remediation_checklist.md)

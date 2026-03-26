@@ -34,6 +34,7 @@ from ..domain import (
     ReportBundle,
     ReportFormat,
     ResistanceMode,
+    SectionType,
 )
 from ..models import ElementModel
 from ..storage import build_calculation_request
@@ -240,14 +241,20 @@ def write_docx_report(context: ReportContext, file_path: Path) -> None:
     document.add_heading("Диагностика остаточного ресурса", level=1)
     add_docx_table(
         document,
-        ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+        ["Сценарий", "Номинал, лет", "Консервативно, лет", "Верхняя граница, лет", "Интервал", "Статус", "Поиск", "Ширина интервала", "Итерации"],
         build_scenario_detail_rows(context),
     )
     document.add_heading("Неопределенность и риск", level=1)
     add_docx_table(document, ["Параметр", "Значение"], build_uncertainty_rows(context))
+    document.add_heading("Матрица предупреждений", level=1)
+    add_docx_table(document, ["Серьезность", "Источник", "Содержание"], build_warning_group_rows(context))
 
     document.add_heading("Фрагмент временной диаграммы", level=1)
-    add_docx_table(document, ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context))
+    add_docx_table(
+        document,
+        ["Возраст, лет", "R central", "R conservative", "R upper", "S", "Запас"],
+        build_timeline_rows(context),
+    )
 
     document.add_heading("Ограничения применимости", level=1)
     for line in build_limitation_lines(context):
@@ -313,13 +320,28 @@ def write_pdf_report(context: ReportContext, file_path: Path) -> None:
     story.extend(
         build_pdf_section(
             "Диагностика остаточного ресурса",
-            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Верхняя граница, лет", "Интервал", "Статус", "Поиск", "Ширина интервала", "Итерации"],
             build_scenario_detail_rows(context),
             styles,
         )
     )
     story.extend(build_pdf_section("Неопределенность и риск", ["Параметр", "Значение"], build_uncertainty_rows(context), styles))
-    story.extend(build_pdf_section("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context), styles))
+    story.extend(
+        build_pdf_section(
+            "Матрица предупреждений",
+            ["Серьезность", "Источник", "Содержание"],
+            build_warning_group_rows(context),
+            styles,
+        )
+    )
+    story.extend(
+        build_pdf_section(
+            "Фрагмент временной диаграммы",
+            ["Возраст, лет", "R central", "R conservative", "R upper", "S", "Запас"],
+            build_timeline_rows(context),
+            styles,
+        )
+    )
     story.extend(build_pdf_list_section("Ограничения применимости", build_limitation_lines(context), styles))
 
     story.append(Paragraph("Рекомендации", styles["heading"]))
@@ -401,7 +423,7 @@ def build_markdown_report(context: ReportContext) -> str:
             "## Диагностика остаточного ресурса",
             "",
             render_markdown_table(
-                ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+                ["Сценарий", "Номинал, лет", "Консервативно, лет", "Верхняя граница, лет", "Интервал", "Статус", "Поиск", "Ширина интервала", "Итерации"],
                 build_scenario_detail_rows(context),
             ),
             "",
@@ -409,9 +431,13 @@ def build_markdown_report(context: ReportContext) -> str:
             "",
             render_markdown_table(["Параметр", "Значение"], build_uncertainty_rows(context)),
             "",
+            "## Матрица предупреждений",
+            "",
+            render_markdown_table(["Серьезность", "Источник", "Содержание"], build_warning_group_rows(context)),
+            "",
             "## Фрагмент временной диаграммы",
             "",
-            render_markdown_table(["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context)),
+            render_markdown_table(["Возраст, лет", "R central", "R conservative", "R upper", "S", "Запас"], build_timeline_rows(context)),
             "",
             "## Ограничения применимости",
             "",
@@ -458,11 +484,12 @@ def build_html_report(context: ReportContext) -> str:
         ),
         (
             "Диагностика остаточного ресурса",
-            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Интервал", "Поиск", "Ширина интервала", "Итерации"],
+            ["Сценарий", "Номинал, лет", "Консервативно, лет", "Верхняя граница, лет", "Интервал", "Статус", "Поиск", "Ширина интервала", "Итерации"],
             build_scenario_detail_rows(context),
         ),
         ("Неопределенность и риск", ["Параметр", "Значение"], build_uncertainty_rows(context)),
-        ("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context)),
+        ("Матрица предупреждений", ["Серьезность", "Источник", "Содержание"], build_warning_group_rows(context)),
+        ("Фрагмент временной диаграммы", ["Возраст, лет", "R central", "R conservative", "R upper", "S", "Запас"], build_timeline_rows(context)),
     ]
 
     body = [
@@ -610,7 +637,7 @@ def build_measurement_rows(context: ReportContext) -> List[List[str]]:
 def build_model_rows(context: ReportContext) -> List[List[str]]:
     response = context.calculation_response
     coefficients = response.environment_coefficients
-    return [
+    rows = [
         ["Коэффициент среды k, мм", format_number(coefficients["k_mm"], 4)],
         ["Показатель времени b", format_number(coefficients["b"], 4)],
         ["Консервативный показатель b", format_number(coefficients["b_conservative"], 4)],
@@ -625,11 +652,24 @@ def build_model_rows(context: ReportContext) -> List[List[str]]:
         ["ML-модель", response.ml_model_version.name],
         ["Версия ML-модели", response.ml_model_version.version],
         ["Примечание по ML-модели", response.ml_model_version.notes or "-"],
+        ["ML execution mode", response.ml_model_version.execution_mode or "-"],
+        ["ML blend mode", response.ml_model_version.blend_mode or "-"],
+        ["ML interval source", response.ml_model_version.interval_source or "-"],
+        ["ML accepted/rejected rows", f"{response.ml_model_version.accepted_row_count}/{response.ml_model_version.rejected_row_count}"],
+        ["ML accepted/rejected candidates", f"{response.ml_model_version.accepted_candidate_count}/{response.ml_model_version.rejected_candidate_count}"],
+        ["ML acceptance policy", format_acceptance_policy(response.ml_model_version.acceptance_policy)],
         ["Версия набора данных", response.dataset_version.code],
         ["Источник данных", response.dataset_version.source],
+        ["Хэш набора данных", response.dataset_version.data_hash or "-"],
+        ["Accepted/rejected rows dataset", f"{response.dataset_version.accepted_row_count}/{response.dataset_version.rejected_row_count}"],
         ["Количество сценариев", str(len(response.results))],
         ["Доля превышений", format_number(response.risk_profile.exceedance_share, 3)],
     ]
+    if response.ml_model_version.dataset_journal:
+        rows.append(["ML dataset journal", summarize_dataset_journal(response.ml_model_version.dataset_journal)])
+    if response.ml_model_version.candidate_registry:
+        rows.append(["ML candidate registry", summarize_candidate_registry(response.ml_model_version.candidate_registry)])
+    return rows
 
 
 def build_zone_rows(context: ReportContext) -> List[List[str]]:
@@ -698,13 +738,15 @@ def build_scenario_detail_rows(context: ReportContext) -> List[List[str]]:
                 result.scenario_name,
                 format_optional_number(result.remaining_life_nominal_years, 2),
                 format_optional_number(result.remaining_life_conservative_years, 2),
+                format_optional_number(result.life_interval_years.upper_years, 2),
                 interval,
+                translate_refinement_status(result.refinement_diagnostics.status),
                 translate_crossing_mode(result.crossing_search_mode),
                 format_optional_number(result.crossing_bracket_width_years, 2),
                 str(result.crossing_refinement_iterations),
             ]
         )
-    return rows or [["-", "-", "-", "-", "-", "-", "-"]]
+    return rows or [["-", "-", "-", "-", "-", "-", "-", "-", "-"]]
 
 
 def build_uncertainty_rows(context: ReportContext) -> List[List[str]]:
@@ -714,27 +756,91 @@ def build_uncertainty_rows(context: ReportContext) -> List[List[str]]:
         ["Интервал остаточного ресурса", format_life_interval(response.life_interval_years)],
         ["Номинальный ресурс, лет", format_optional_number(response.life_interval_years.nominal_years, 2)],
         ["Консервативный ресурс, лет", format_optional_number(response.life_interval_years.conservative_years, 2)],
+        ["Верхняя граница ресурса, лет", format_optional_number(response.life_interval_years.upper_years, 2)],
+        ["Уровень uncertainty", translate_uncertainty_level(response.uncertainty_level)],
+        ["Источник uncertainty", translate_uncertainty_source(response.uncertainty_source)],
         ["Режим поиска предельного состояния", translate_crossing_mode(response.crossing_search_mode)],
+        ["Статус уточнения", translate_refinement_status(response.refinement_diagnostics.status)],
+        ["Ширина интервала корня, лет", format_optional_number(response.refinement_diagnostics.bracket_width_years, 2)],
+        ["Размах margin(t)", format_optional_number(response.refinement_diagnostics.margin_span_value, 3)],
         ["ML candidates", str(response.ml_candidate_count)],
         ["ML blend mode", response.ml_blend_mode],
         ["ML interval source", response.ml_interval_source],
+        ["Траектории guidance", build_trajectory_summary(response.governing_uncertainty_trajectories)],
         ["Основания uncertainty band", "; ".join(response.uncertainty_basis) or "-"],
         ["Предупреждения uncertainty band", "; ".join(response.uncertainty_warnings) or "-"],
+        ["Предупреждения refinement", "; ".join(response.refinement_diagnostics.warnings) or "-"],
     ]
+
+
+def build_warning_group_rows(context: ReportContext) -> List[List[str]]:
+    groups = collect_warning_groups(context.calculation_response)
+    if not groups:
+        return [["low", "none", "Дополнительные предупреждения не зарегистрированы."]]
+
+    rows: List[List[str]] = []
+    for severity, origin, items in groups:
+        rows.append([severity, origin, "; ".join(items)])
+    return rows
+
+
+def collect_warning_groups(response: CalculationResponse) -> List[Tuple[str, str, List[str]]]:
+    groups: List[Tuple[str, str, List[str]]] = []
+
+    append_warning_group(groups, "medium", "calculation", response.warnings)
+    append_warning_group(
+        groups,
+        "high" if response.fallback_flags else "medium",
+        "fallback",
+        [translate_fallback_flag(flag) for flag in response.fallback_flags],
+    )
+    append_warning_group(groups, "medium", "uncertainty", response.uncertainty_warnings)
+    append_warning_group(groups, "medium", "refinement", response.refinement_diagnostics.warnings)
+
+    for observation in response.zone_observations:
+        append_warning_group(groups, "medium", f"rate_fit:{observation.zone_id}", observation.warnings)
+
+    return groups
+
+
+def append_warning_group(
+    groups: List[Tuple[str, str, List[str]]],
+    severity: str,
+    origin: str,
+    items: Sequence[str],
+) -> None:
+    normalized_items = [str(item) for item in items if str(item).strip()]
+    if not normalized_items:
+        return
+    groups.append((severity, origin, unique_lines(normalized_items)))
 
 
 def build_timeline_rows(context: ReportContext) -> List[List[str]]:
     baseline = context.calculation_response.results[0]
-    sampled_timeline = sample_timeline(baseline.timeline, MAX_TIMELINE_ROWS)
-    return [
-        [
-            format_number(point.age_years, 2),
-            format_number(point.resistance_value, 3),
-            format_number(point.demand_value, 3),
-            format_number(point.margin_value, 3),
-        ]
-        for point in sampled_timeline
-    ]
+    central = baseline.uncertainty_trajectories.central or baseline.timeline
+    conservative_map = {
+        round(point.age_years, 6): point for point in (baseline.uncertainty_trajectories.conservative or baseline.timeline)
+    }
+    upper_map = {
+        round(point.age_years, 6): point for point in (baseline.uncertainty_trajectories.upper or baseline.timeline)
+    }
+    sampled_timeline = sample_timeline(central, MAX_TIMELINE_ROWS)
+    rows: List[List[str]] = []
+    for point in sampled_timeline:
+        key = round(point.age_years, 6)
+        conservative_point = conservative_map.get(key, point)
+        upper_point = upper_map.get(key, point)
+        rows.append(
+            [
+                format_number(point.age_years, 2),
+                format_number(point.resistance_value, 3),
+                format_number(conservative_point.resistance_value, 3),
+                format_number(upper_point.resistance_value, 3),
+                format_number(point.demand_value, 3),
+                format_number(point.margin_value, 3),
+            ]
+        )
+    return rows
 
 
 def build_recommendation_lines(context: ReportContext) -> List[str]:
@@ -753,13 +859,25 @@ def build_limitation_lines(context: ReportContext) -> List[str]:
     if response.reducer_mode == ReducerMode.GENERIC_FALLBACK:
         lines.append(
             "Для эффективного сечения использован режим generic_reduced. "
-            "Это консервативное приближение по исходным пользовательским характеристикам, а не прямой reducer нормативного профиля."
+            "Это жестко маркированный fallback-режим по исходным пользовательским характеристикам, "
+            "а не прямой reducer нормативного профиля."
+        )
+
+    if context.calculation_request.section.section_type == SectionType.ANGLE:
+        lines.append(
+            "Reducer для angle трактуется как инженерная композиция двух полок с вычетом зоны перекрытия. "
+            "Он пригоден для остаточной оценки, но не является расчетом тонкостенной крутильной работы уголка."
         )
 
     if response.resistance_mode == ResistanceMode.APPROXIMATE:
         lines.append(
             "Несущая способность определялась в приближенном режиме. "
             "Для данного случая задействована укрупненная проверка сжатия через коэффициент устойчивости."
+        )
+    elif response.resistance_mode == ResistanceMode.COMPRESSION_ENHANCED:
+        lines.append(
+            "Несущая способность определялась в режиме compression_enhanced. "
+            "Использована инженерная slenderness-редукция с явными входами по приведенной длине и закреплению, но не полный нормативный расчет по СП 16."
         )
     elif response.resistance_mode == ResistanceMode.COMBINED_BASIC:
         lines.append(
@@ -807,6 +925,21 @@ def build_limitation_lines(context: ReportContext) -> List[str]:
     if response.engineering_confidence_level in (EngineeringConfidenceLevel.C, EngineeringConfidenceLevel.D):
         lines.append(
             f"Итоговый класс инженерной уверенности: {translate_confidence_level(response.engineering_confidence_level)}."
+        )
+
+    if response.risk_mode == "engineering_uncertainty_band" or getattr(response.risk_mode, "value", "") == "engineering_uncertainty_band":
+        lines.append(
+            "Показанный uncertainty band является инженерным интервалом guidance по сценариям и скорости деградации, "
+            "а не формальной вероятностной оценкой надежности."
+        )
+        lines.append(
+            f"Источник uncertainty: {translate_uncertainty_source(response.uncertainty_source)}; "
+            f"уровень uncertainty: {translate_uncertainty_level(response.uncertainty_level)}."
+        )
+
+    if response.refinement_diagnostics.status in {"near_flat_no_crossing", "numerically_uncertain_crossing"}:
+        lines.append(
+            f"Диагностика поиска предельного состояния: {translate_refinement_status(response.refinement_diagnostics.status)}."
         )
 
     lines.append(response.risk_profile.method_note)
@@ -1053,6 +1186,15 @@ def build_action_rows(request: CalculationRequest) -> List[List[str]]:
                     ["Коэффициент усиления момента", format_optional_number(request.action.moment_amplification_factor, 3)],
                 ]
             )
+    elif request.action.check_type == CheckType.AXIAL_COMPRESSION_ENHANCED:
+        rows.extend(
+            [
+                ["Расчетное воздействие", format_optional_number(request.action.demand_value, 3)],
+                ["Эффективная длина", format_optional_number(request.action.effective_length_mm, 1)],
+                ["Коэффициент приведенной длины", format_optional_number(request.action.effective_length_factor, 3)],
+                ["Условие закрепления", request.action.support_condition or "-"],
+            ]
+        )
     else:
         rows.append(["Расчетное воздействие", format_optional_number(request.action.demand_value, 3)])
     rows.append(["Рост воздействия в год", format_number(request.action.demand_growth_factor_per_year, 4)])
@@ -1063,6 +1205,7 @@ def translate_check_type(check_type: CheckType) -> str:
     mapping = {
         CheckType.AXIAL_TENSION: "axial_tension - растяжение",
         CheckType.AXIAL_COMPRESSION: "axial_compression - сжатие",
+        CheckType.AXIAL_COMPRESSION_ENHANCED: "axial_compression_enhanced - сжатие (engineering enhanced)",
         CheckType.BENDING_MAJOR: "bending_major - изгиб по главной оси",
         CheckType.COMBINED_AXIAL_BENDING_BASIC: "combined_axial_bending_basic - базовая комбинированная проверка",
     }
@@ -1102,6 +1245,7 @@ def translate_resistance_mode(mode: ResistanceMode | str) -> str:
     mapping = {
         ResistanceMode.DIRECT.value: "direct - прямая инженерная проверка",
         ResistanceMode.APPROXIMATE.value: "approximate - приближенная инженерная проверка",
+        ResistanceMode.COMPRESSION_ENHANCED.value: "compression_enhanced - усиленное инженерное сжатие",
         ResistanceMode.COMBINED_BASIC.value: "combined_basic - базовая комбинированная проверка",
     }
     mapping[ResistanceMode.COMBINED_ENHANCED.value] = "combined_enhanced - усиленная комбинированная проверка"
@@ -1112,7 +1256,7 @@ def translate_reducer_mode(mode: ReducerMode | str) -> str:
     normalized = mode.value if isinstance(mode, ReducerMode) else str(mode)
     mapping = {
         ReducerMode.DIRECT.value: "direct - прямой редьюсер профиля",
-        ReducerMode.GENERIC_FALLBACK.value: "generic_fallback - fallback через generic_reduced",
+        ReducerMode.GENERIC_FALLBACK.value: "generic_fallback - только fallback через generic_reduced",
     }
     return mapping.get(normalized, normalized)
 
@@ -1138,6 +1282,27 @@ def translate_risk_mode(mode) -> str:
     return normalized
 
 
+def translate_uncertainty_level(level) -> str:
+    normalized = level.value if hasattr(level, "value") else str(level)
+    mapping = {
+        "low": "low - узкий инженерный интервал",
+        "moderate": "moderate - умеренный инженерный разброс",
+        "high": "high - повышенная инженерная неопределенность",
+        "very_high": "very_high - очень высокая инженерная неопределенность",
+    }
+    return mapping.get(normalized, normalized)
+
+
+def translate_uncertainty_source(source: str) -> str:
+    mapping = {
+        "scenario_library_only": "scenario_library_only - только базовая сценарная библиотека",
+        "inspection_history_band": "inspection_history_band - полоса по данным обследований",
+        "inspection_history_limited": "inspection_history_limited - история обследований ограничена",
+        "inspection_history_with_baseline_fallback": "inspection_history_with_baseline_fallback - часть зон добрана baseline fallback",
+    }
+    return mapping.get(str(source), str(source))
+
+
 def translate_crossing_mode(mode: str) -> str:
     mapping = {
         "no_timeline": "нет временной диаграммы",
@@ -1148,6 +1313,19 @@ def translate_crossing_mode(mode: str) -> str:
         "coarse_only": "только грубая оценка",
     }
     return mapping.get(str(mode), str(mode))
+
+
+def translate_refinement_status(status: str) -> str:
+    mapping = {
+        "no_timeline": "нет временной диаграммы",
+        "already_reached": "предельное состояние уже достигнуто",
+        "bracketed_crossing": "переход найден в устойчивом интервале",
+        "numerically_uncertain_crossing": "переход найден, но интервал численно неустойчив",
+        "near_flat_no_crossing": "в горизонте нет перехода, но кривая почти плоская",
+        "no_crossing_within_horizon": "в горизонте переход не найден",
+        "coarse_only": "только грубая оценка",
+    }
+    return mapping.get(str(status), str(status))
 
 
 def translate_ml_mode(mode: str) -> str:
@@ -1161,13 +1339,46 @@ def translate_ml_mode(mode: str) -> str:
 
 def translate_fallback_flag(flag: str) -> str:
     if flag == "generic_reduced":
-        return "эффективное сечение получено через generic_reduced."
+        return "эффективное сечение получено через generic_reduced как явный fallback-режим."
     if flag.startswith("forecast_source:") and flag.endswith(":baseline"):
         _, zone_id, _ = flag.split(":", 2)
         return f"зона {zone_id}: прогноз продолжен по baseline-модели."
     if flag.startswith("resistance_mode:"):
         return f"режим сопротивления {translate_resistance_mode(flag.split(':', 1)[1])}."
     return flag
+
+
+def build_trajectory_summary(trajectories) -> str:
+    central = len(getattr(trajectories, "central", []) or [])
+    conservative = len(getattr(trajectories, "conservative", []) or [])
+    upper = len(getattr(trajectories, "upper", []) or [])
+    if not any([central, conservative, upper]):
+        return "-"
+    return f"central={central}, conservative={conservative}, upper={upper}"
+
+
+def format_acceptance_policy(policy: dict) -> str:
+    if not policy:
+        return "-"
+    return ", ".join(f"{key}={value}" for key, value in sorted(policy.items()))
+
+
+def summarize_dataset_journal(dataset_journal: Sequence[dict]) -> str:
+    items = []
+    for item in dataset_journal:
+        items.append(
+            f"{item.get('dataset_kind', '?')}:{item.get('version', '?')}:{item.get('dataset_hash', '-')}"
+        )
+    return "; ".join(items) or "-"
+
+
+def summarize_candidate_registry(candidate_registry: Sequence[dict]) -> str:
+    items = []
+    for item in candidate_registry:
+        items.append(
+            f"{item.get('name', '?')}={item.get('status', '?')}:{item.get('reason', '-')}"
+        )
+    return "; ".join(items) or "-"
 
 
 def unique_lines(lines: Sequence[str]) -> List[str]:

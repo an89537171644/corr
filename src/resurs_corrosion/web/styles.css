@@ -570,6 +570,42 @@ button:hover {
   line-height: 1.5;
 }
 
+.diagnostic-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.diagnostic-panel {
+  border: 1px solid rgba(23, 33, 38, 0.1);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  overflow: hidden;
+}
+
+.diagnostic-panel summary {
+  cursor: pointer;
+  padding: 12px 14px;
+  font-weight: 700;
+  color: var(--bg-deep);
+  background: rgba(25, 51, 58, 0.05);
+}
+
+.diagnostic-list {
+  margin: 0;
+  padding: 12px 18px 16px 32px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.import-issues.warning {
+  color: var(--accent);
+}
+
+.import-issues.error {
+  color: var(--danger);
+}
+
 .chart-shell svg {
   width: 100%;
   height: auto;

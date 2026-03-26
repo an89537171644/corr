@@ -26,7 +26,17 @@ from .domain import (
     ThicknessMeasurement,
     ZoneDefinition,
 )
-from .models import AnalysisRunModel, AssetModel, ElementModel, InspectionModel, MeasurementModel, ZoneModel
+from .models import (
+    AnalysisRunModel,
+    AssetModel,
+    ElementActionSnapshotModel,
+    ElementMaterialSnapshotModel,
+    ElementModel,
+    ElementSectionSnapshotModel,
+    InspectionModel,
+    MeasurementModel,
+    ZoneModel,
+)
 
 
 def list_assets(session: Session) -> List[AssetModel]:
@@ -63,7 +73,12 @@ def list_elements_by_asset(session: Session, asset_id: int) -> List[ElementModel
     statement = (
         select(ElementModel)
         .where(ElementModel.asset_id == asset_id)
-        .options(selectinload(ElementModel.zones))
+        .options(
+            selectinload(ElementModel.section_snapshot),
+            selectinload(ElementModel.material_snapshot),
+            selectinload(ElementModel.action_snapshot),
+            selectinload(ElementModel.zones),
+        )
         .order_by(ElementModel.id)
     )
     return list(session.scalars(statement))
@@ -75,6 +90,9 @@ def get_element_by_asset_and_code(session: Session, asset_id: int, element_code:
         .where(ElementModel.asset_id == asset_id, ElementModel.element_code == element_code)
         .options(
             selectinload(ElementModel.asset),
+            selectinload(ElementModel.section_snapshot),
+            selectinload(ElementModel.material_snapshot),
+            selectinload(ElementModel.action_snapshot),
             selectinload(ElementModel.zones),
             selectinload(ElementModel.inspections).selectinload(InspectionModel.measurements),
         )
@@ -88,6 +106,9 @@ def get_element(session: Session, element_id: int) -> Optional[ElementModel]:
         .where(ElementModel.id == element_id)
         .options(
             selectinload(ElementModel.asset),
+            selectinload(ElementModel.section_snapshot),
+            selectinload(ElementModel.material_snapshot),
+            selectinload(ElementModel.action_snapshot),
             selectinload(ElementModel.zones),
             selectinload(ElementModel.inspections).selectinload(InspectionModel.measurements),
         )
@@ -102,6 +123,48 @@ def get_analysis_run(session: Session, analysis_id: int) -> Optional[AnalysisRun
         .options(selectinload(AnalysisRunModel.element).selectinload(ElementModel.asset))
     )
     return session.scalars(statement).first()
+
+
+def get_element_component_payloads(element: ElementModel) -> tuple[dict, dict, dict]:
+    section_payload = element.section_snapshot.payload if element.section_snapshot is not None else element.section_data
+    material_payload = element.material_snapshot.payload if element.material_snapshot is not None else element.material_data
+    action_payload = element.action_snapshot.payload if element.action_snapshot is not None else element.action_data
+    return section_payload, material_payload, action_payload
+
+
+def sync_element_component_snapshots(element: ElementModel, payload: ElementCreate) -> None:
+    section_payload = payload.section.model_dump(mode="json")
+    material_payload = payload.material.model_dump(mode="json")
+    action_payload = payload.action.model_dump(mode="json")
+
+    element.section_snapshot = upsert_component_snapshot(
+        existing=element.section_snapshot,
+        model_cls=ElementSectionSnapshotModel,
+        schema_version=payload.section.schema_version,
+        component_payload=section_payload,
+    )
+    element.material_snapshot = upsert_component_snapshot(
+        existing=element.material_snapshot,
+        model_cls=ElementMaterialSnapshotModel,
+        schema_version=payload.material.schema_version,
+        component_payload=material_payload,
+    )
+    element.action_snapshot = upsert_component_snapshot(
+        existing=element.action_snapshot,
+        model_cls=ElementActionSnapshotModel,
+        schema_version=payload.action.schema_version,
+        component_payload=action_payload,
+    )
+
+
+def upsert_component_snapshot(existing, model_cls, schema_version: str, component_payload: dict):
+    if existing is None:
+        return model_cls(schema_version=schema_version, payload=component_payload, source="json_shadow")
+
+    existing.schema_version = schema_version
+    existing.payload = component_payload
+    existing.source = "json_shadow"
+    return existing
 
 
 def create_element(session: Session, asset_id: int, payload: ElementCreate) -> ElementModel:
@@ -119,6 +182,7 @@ def create_element(session: Session, asset_id: int, payload: ElementCreate) -> E
         action_data=payload.action.model_dump(mode="json"),
         zones=[zone_to_model(zone) for zone in payload.zones],
     )
+    sync_element_component_snapshots(element, payload)
     session.add(element)
     session.commit()
     return get_element(session, element.id)
@@ -135,6 +199,7 @@ def update_element(session: Session, element: ElementModel, payload: ElementCrea
     element.section_data = payload.section.model_dump(mode="json")
     element.material_data = payload.material.model_dump(mode="json")
     element.action_data = payload.action.model_dump(mode="json")
+    sync_element_component_snapshots(element, payload)
     element.zones = [zone_to_model(zone) for zone in payload.zones]
     session.commit()
     return get_element(session, element.id)
@@ -236,6 +301,7 @@ def asset_to_schema(asset: AssetModel) -> AssetRead:
 
 
 def element_to_schema(element: ElementModel) -> ElementRead:
+    section_payload, material_payload, action_payload = get_element_component_payloads(element)
     return ElementRead(
         id=element.id,
         asset_id=element.asset_id,
@@ -246,9 +312,9 @@ def element_to_schema(element: ElementModel) -> ElementRead:
         operating_zone=element.operating_zone,
         environment_category=EnvironmentCategory(element.environment_category),
         current_service_life_years=element.current_service_life_years,
-        section=SectionDefinition.model_validate(element.section_data),
-        material=MaterialInput.model_validate(element.material_data),
-        action=ActionInput.model_validate(element.action_data),
+        section=SectionDefinition.model_validate(section_payload),
+        material=MaterialInput.model_validate(material_payload),
+        action=ActionInput.model_validate(action_payload),
         zones=[zone_to_schema(zone) for zone in element.zones],
     )
 
@@ -280,6 +346,7 @@ def build_calculation_request(
     element: ElementModel,
     overrides: BaselineStoredElementRequest,
 ) -> CalculationRequest:
+    section_payload, material_payload, action_payload = get_element_component_payloads(element)
     inspections = [
         InspectionRecord(
             inspection_id=inspection.inspection_code or str(inspection.id),
@@ -313,10 +380,10 @@ def build_calculation_request(
         asset=asset,
         element=element_passport,
         environment_category=EnvironmentCategory(element.environment_category),
-        section=SectionDefinition.model_validate(element.section_data),
+        section=SectionDefinition.model_validate(section_payload),
         zones=[zone_to_schema(zone) for zone in element.zones],
-        material=MaterialInput.model_validate(element.material_data),
-        action=ActionInput.model_validate(element.action_data),
+        material=MaterialInput.model_validate(material_payload),
+        action=ActionInput.model_validate(action_payload),
         current_service_life_years=current_service_life,
         forecast_horizon_years=overrides.forecast_horizon_years,
         time_step_years=overrides.time_step_years,

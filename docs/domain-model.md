@@ -9,6 +9,9 @@ The MVP persists the core chain requested by the specification:
 - `Zone`
 - `Inspection`
 - `Measurement`
+- `ElementSectionSnapshot`
+- `ElementMaterialSnapshot`
+- `ElementActionSnapshot`
 
 Relationships:
 
@@ -39,6 +42,7 @@ Each measurement stores:
 - units
 - confidence/quality `q_i`
 - optional comment
+- explicit `normalization_metadata` when compatibility aliases are normalized
 
 This keeps the repository compatible with later calibration and ML training stages.
 
@@ -66,3 +70,18 @@ Each analysis response now reports:
   the name/version of the hybrid rate correction module
 
 This is the minimum provenance layer needed for reproducible engineering studies.
+
+## Import feedback
+
+Bulk import returns both classic counters and structured diagnostics:
+
+- `warnings[]`
+  compatibility list of warning messages
+- `warning_details[]`
+  structured warning items with `code`, `severity`, `origin`, and `row_reference`
+- `errors[]`
+  structured validation errors
+
+This lets the UI and the acceptance suite distinguish weak histories,
+chronology contradictions, and suspicious thickness rebounds from hard import
+failures.
