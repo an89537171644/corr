@@ -163,7 +163,7 @@ def detect_import_format(filename: str) -> ImportFormat:
         return ImportFormat.CSV
     if lowered.endswith(".xlsx"):
         return ImportFormat.XLSX
-    raise ImportValidationError("Unsupported file format. Use .csv or .xlsx.")
+    raise ImportValidationError("Неподдерживаемый формат файла. Используйте .csv или .xlsx.")
 
 
 def read_single_table(filename: str, payload: bytes) -> List[RowRecord]:
@@ -173,7 +173,7 @@ def read_single_table(filename: str, payload: bytes) -> List[RowRecord]:
 
     workbook_rows = read_xlsx_tables(payload)
     if len(workbook_rows) != 1:
-        raise ImportValidationError("XLSX import for this dataset expects exactly one worksheet.")
+        raise ImportValidationError("Для этого набора данных XLSX-файл должен содержать ровно один лист.")
     return next(iter(workbook_rows.values()))
 
 
@@ -187,13 +187,13 @@ def read_csv_rows(payload: bytes) -> List[RowRecord]:
 
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     if reader.fieldnames is None:
-        raise ImportValidationError("CSV file does not contain a header row.")
+        raise ImportValidationError("В CSV-файле отсутствует строка заголовков.")
 
     rows: List[RowRecord] = []
     for index, raw_row in enumerate(reader, start=2):
         cleaned = {normalize_field_name(key): clean_value(value) for key, value in raw_row.items() if key is not None}
         if any(value is not None for value in cleaned.values()):
-            rows.append(RowRecord(reference=f"row {index}", data=cleaned))
+            rows.append(RowRecord(reference=f"строка {index}", data=cleaned))
     return rows
 
 
@@ -203,7 +203,7 @@ def decode_csv_bytes(payload: bytes) -> str:
             return payload.decode(encoding)
         except UnicodeDecodeError:
             continue
-    raise ImportValidationError("Unable to decode CSV file. Supported encodings: UTF-8 and CP1251.")
+    raise ImportValidationError("Не удалось декодировать CSV-файл. Поддерживаются кодировки UTF-8 и CP1251.")
 
 
 def read_xlsx_tables(payload: bytes) -> Dict[str, List[RowRecord]]:
@@ -248,7 +248,7 @@ def group_element_csv_rows(rows: List[RowRecord]) -> Dict[str, dict]:
 def group_element_xlsx_rows(payload: bytes) -> Dict[str, dict]:
     sheets = read_xlsx_tables(payload)
     if "elements" not in sheets or "zones" not in sheets:
-        raise ImportValidationError("XLSX workbook for elements must contain 'elements' and 'zones' sheets.")
+        raise ImportValidationError("XLSX-книга для элементов должна содержать листы 'elements' и 'zones'.")
 
     grouped: Dict[str, dict] = {}
     for row in sheets["elements"]:
@@ -258,7 +258,7 @@ def group_element_xlsx_rows(payload: bytes) -> Dict[str, dict]:
     for row in sheets["zones"]:
         element_code = require_text(row.data, "element_id")
         if element_code not in grouped:
-            raise ImportValidationError(f"{row.reference}: zone references unknown element_id '{element_code}'.")
+            raise ImportValidationError(f"{row.reference}: зона ссылается на неизвестный element_id '{element_code}'.")
         grouped[element_code]["zones"].append(build_zone_dict(row.data))
         grouped[element_code]["rows"].append(row.reference)
 
@@ -288,7 +288,7 @@ def group_inspection_csv_rows(rows: List[RowRecord]) -> Dict[str, dict]:
 def group_inspection_xlsx_rows(payload: bytes) -> Dict[str, dict]:
     sheets = read_xlsx_tables(payload)
     if "inspections" not in sheets:
-        raise ImportValidationError("XLSX workbook for inspections must contain an 'inspections' sheet.")
+        raise ImportValidationError("XLSX-книга для обследований должна содержать лист 'inspections'.")
 
     grouped: Dict[str, dict] = {}
     for row in sheets["inspections"]:
@@ -300,9 +300,9 @@ def group_inspection_xlsx_rows(payload: bytes) -> Dict[str, dict]:
     for row in sheets.get("measurements", []):
         inspection_code = optional_text(row.data, "inspection_code")
         if inspection_code is None:
-            raise ImportValidationError(f"{row.reference}: measurements sheet requires inspection_code.")
+            raise ImportValidationError(f"{row.reference}: на листе measurements требуется поле inspection_code.")
         if inspection_code not in grouped:
-            raise ImportValidationError(f"{row.reference}: measurement references unknown inspection_code '{inspection_code}'.")
+            raise ImportValidationError(f"{row.reference}: замер ссылается на неизвестный inspection_code '{inspection_code}'.")
         grouped[inspection_code]["measurements"].append(build_measurement_dict(row.data))
         grouped[inspection_code]["rows"].append(row.reference)
 
@@ -379,7 +379,7 @@ def build_action_input(row: Dict[str, object]) -> ActionInput:
 def build_zone_dict_from_flat_row(row: Dict[str, object]) -> Dict[str, object]:
     zone_id = optional_text(row, "zone_id")
     if zone_id is None:
-        raise ImportValidationError("Missing required field 'zone_id'.")
+        raise ImportValidationError("Отсутствует обязательное поле 'zone_id'.")
     return build_zone_dict(row)
 
 
@@ -436,7 +436,7 @@ def merge_row_data(target: Dict[str, object], source: Dict[str, object]) -> None
 def require_text(row: Dict[str, object], field_name: str) -> str:
     value = optional_text(row, field_name)
     if value is None:
-        raise ImportValidationError(f"Missing required field '{field_name}'.")
+        raise ImportValidationError(f"Отсутствует обязательное поле '{field_name}'.")
     return value
 
 
@@ -450,7 +450,7 @@ def optional_text(row: Dict[str, object], field_name: str) -> Optional[str]:
 def require_float(row: Dict[str, object], field_name: str) -> float:
     value = optional_float(row, field_name)
     if value is None:
-        raise ImportValidationError(f"Missing required numeric field '{field_name}'.")
+        raise ImportValidationError(f"Отсутствует обязательное числовое поле '{field_name}'.")
     return value
 
 
@@ -463,7 +463,7 @@ def optional_float(row: Dict[str, object], field_name: str) -> Optional[float]:
     try:
         return float(str(value).replace(",", "."))
     except ValueError as exc:
-        raise ImportValidationError(f"Field '{field_name}' must be numeric.") from exc
+        raise ImportValidationError(f"Поле '{field_name}' должно быть числовым.") from exc
 
 
 def optional_int(row: Dict[str, object], field_name: str) -> Optional[int]:
@@ -477,13 +477,13 @@ def optional_int(row: Dict[str, object], field_name: str) -> Optional[int]:
     try:
         return int(float(str(value).replace(",", ".")))
     except ValueError as exc:
-        raise ImportValidationError(f"Field '{field_name}' must be an integer.") from exc
+        raise ImportValidationError(f"Поле '{field_name}' должно быть целым числом.") from exc
 
 
 def require_date(row: Dict[str, object], field_name: str) -> date:
     value = optional_date(row, field_name)
     if value is None:
-        raise ImportValidationError(f"Missing required date field '{field_name}'.")
+        raise ImportValidationError(f"Отсутствует обязательное поле даты '{field_name}'.")
     return value
 
 
@@ -502,14 +502,14 @@ def optional_date(row: Dict[str, object], field_name: str) -> Optional[date]:
             return datetime.strptime(text, fmt).date()
         except ValueError:
             continue
-    raise ImportValidationError(f"Field '{field_name}' must be a valid date.")
+    raise ImportValidationError(f"Поле '{field_name}' должно содержать корректную дату.")
 
 
 def parse_environment_category(value: str) -> EnvironmentCategory:
     try:
         return EnvironmentCategory(value.upper())
     except ValueError as exc:
-        raise ImportValidationError(f"Unsupported environment category '{value}'.") from exc
+        raise ImportValidationError(f"Неподдерживаемая категория среды '{value}'.") from exc
 
 
 def parse_section_type(value: str) -> SectionType:
@@ -517,7 +517,7 @@ def parse_section_type(value: str) -> SectionType:
     try:
         return SectionType(normalized)
     except ValueError as exc:
-        raise ImportValidationError(f"Unsupported section type '{value}'.") from exc
+        raise ImportValidationError(f"Неподдерживаемый тип сечения '{value}'.") from exc
 
 
 def parse_check_type(value: str) -> CheckType:
@@ -525,10 +525,36 @@ def parse_check_type(value: str) -> CheckType:
     try:
         return CheckType(normalized)
     except ValueError as exc:
-        raise ImportValidationError(f"Unsupported check type '{value}'.") from exc
+        raise ImportValidationError(f"Неподдерживаемый тип проверки '{value}'.") from exc
 
 
 def normalize_exception(exc: Exception) -> str:
     if isinstance(exc, ValidationError):
-        return "; ".join(error["msg"] for error in exc.errors())
+        return "; ".join(translate_validation_error(error) for error in exc.errors())
     return str(exc)
+
+
+def translate_validation_error(error: dict) -> str:
+    field_path = ".".join(str(part) for part in error.get("loc", []) if part != "__root__")
+    field_label = f"Поле '{field_path}'" if field_path else "Данные"
+    error_type = error.get("type")
+    context = error.get("ctx") or {}
+
+    if error_type == "missing":
+        return f"{field_label} обязательно."
+    if error_type in {"float_parsing", "int_parsing"}:
+        return f"{field_label} должно быть числовым."
+    if error_type in {"date_from_datetime_parsing", "date_parsing", "date_type"}:
+        return f"{field_label} должно содержать корректную дату."
+    if error_type == "enum":
+        expected = context.get("expected")
+        if isinstance(expected, str):
+            choices = expected
+        elif expected:
+            choices = ", ".join(str(item) for item in expected)
+        else:
+            choices = "допустимых значений"
+        return f"{field_label} содержит недопустимое значение. Ожидается одно из: {choices}."
+
+    message = error.get("msg", "Ошибка валидации.")
+    return f"{field_label}: {message}"

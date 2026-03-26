@@ -91,7 +91,7 @@ function bindEvents() {
   refs.elementImportForm.addEventListener("submit", (event) => {
     if (!state.selectedAssetId) {
       event.preventDefault();
-      showNotice("Select an asset before importing elements.", "error");
+      showNotice("Перед импортом элементов выберите объект.", "error");
       return;
     }
     handleImportSubmit(event, `/api/v1/assets/${state.selectedAssetId}/import/elements`);
@@ -99,7 +99,7 @@ function bindEvents() {
   refs.inspectionImportForm.addEventListener("submit", (event) => {
     if (!state.selectedElementId) {
       event.preventDefault();
-      showNotice("Select an element before importing inspections.", "error");
+      showNotice("Перед импортом обследований выберите элемент.", "error");
       return;
     }
     handleImportSubmit(event, `/api/v1/elements/${state.selectedElementId}/import/inspections`);
@@ -113,9 +113,9 @@ async function loadBootData() {
 async function checkHealth() {
   try {
     const result = await api("/health");
-    refs.healthBadge.textContent = result.status;
+    refs.healthBadge.textContent = result.status === "ok" ? "доступен" : result.status;
   } catch {
-    refs.healthBadge.textContent = "offline";
+    refs.healthBadge.textContent = "офлайн";
   }
 }
 
@@ -278,7 +278,7 @@ async function handleAssetSubmit(event) {
       json: payload,
     });
     state.selectedAssetId = asset.id;
-    showNotice(`Asset "${asset.name}" ${isUpdate ? "updated" : "created"}.`, "info");
+    showNotice(`Объект "${asset.name}" ${isUpdate ? "обновлен" : "создан"}.`, "info");
     if (isUpdate) {
       await loadAssets();
       const refreshed = state.assets.find((item) => item.id === asset.id) || asset;
@@ -295,7 +295,7 @@ async function handleAssetSubmit(event) {
 async function handleElementSubmit(event) {
   event.preventDefault();
   if (!state.selectedAssetId) {
-    showNotice("Create or select an asset before saving an element.", "error");
+    showNotice("Перед сохранением элемента создайте или выберите объект.", "error");
     return;
   }
 
@@ -311,7 +311,7 @@ async function handleElementSubmit(event) {
     });
     state.selectedElementId = element.id;
     clearDerivedOutputs();
-    showNotice(`Element "${element.element_id}" ${isUpdate ? "updated" : "created"}.`, "info");
+    showNotice(`Элемент "${element.element_id}" ${isUpdate ? "обновлен" : "создан"}.`, "info");
     if (isUpdate) {
       await loadElements(state.selectedAssetId);
       const refreshed = state.elements.find((item) => item.id === element.id) || element;
@@ -328,7 +328,7 @@ async function handleElementSubmit(event) {
 async function handleInspectionSubmit(event) {
   event.preventDefault();
   if (!state.selectedElementId) {
-    showNotice("Select an element before saving an inspection.", "error");
+    showNotice("Перед сохранением обследования выберите элемент.", "error");
     return;
   }
 
@@ -360,7 +360,7 @@ async function handleInspectionSubmit(event) {
     );
     state.selectedInspectionId = inspection.id;
     clearDerivedOutputs();
-    showNotice(`Inspection ${isUpdate ? "updated" : "saved"}.`, "info");
+    showNotice(`Обследование ${isUpdate ? "обновлено" : "сохранено"}.`, "info");
     if (isUpdate) {
       await loadInspections(state.selectedElementId);
       const refreshed = state.inspections.find((item) => item.id === inspection.id) || inspection;
@@ -377,7 +377,7 @@ async function handleInspectionSubmit(event) {
 async function handleCalculationSubmit(event) {
   event.preventDefault();
   if (!state.selectedElementId) {
-    showNotice("Select an element before running the baseline calculation.", "error");
+    showNotice("Перед запуском расчета выберите элемент.", "error");
     return;
   }
 
@@ -392,7 +392,7 @@ async function handleCalculationSubmit(event) {
     });
     renderCalculationResult(state.calculation);
     renderReportPreview();
-    showNotice("Engineering analysis completed.", "info");
+    showNotice("Инженерный расчет выполнен.", "info");
   } catch (error) {
     showNotice(error.message, "error");
   }
@@ -400,7 +400,7 @@ async function handleCalculationSubmit(event) {
 
 async function handleReportPreview() {
   if (!state.selectedElementId) {
-    showNotice("Select an element before previewing a report.", "error");
+    showNotice("Перед предпросмотром отчета выберите элемент.", "error");
     return;
   }
 
@@ -414,7 +414,7 @@ async function handleReportPreview() {
       },
     });
     renderReportPreview();
-    showNotice("Report preview refreshed.", "info");
+    showNotice("Предварительный просмотр отчета обновлен.", "info");
   } catch (error) {
     showNotice(error.message, "error");
   }
@@ -423,13 +423,13 @@ async function handleReportPreview() {
 async function handleReportSubmit(event) {
   event.preventDefault();
   if (!state.selectedElementId) {
-    showNotice("Select an element before exporting a report.", "error");
+    showNotice("Перед экспортом отчета выберите элемент.", "error");
     return;
   }
 
   const request = readReportRequest();
   if (!request.output_formats.length) {
-    showNotice("Choose at least one export format.", "error");
+    showNotice("Выберите хотя бы один формат экспорта.", "error");
     return;
   }
 
@@ -440,7 +440,7 @@ async function handleReportSubmit(event) {
     });
     state.reports = bundle.artifacts;
     renderReports(bundle.artifacts);
-    showNotice("Report bundle generated.", "info");
+    showNotice("Комплект отчетов сформирован.", "info");
   } catch (error) {
     showNotice(error.message, "error");
   }
@@ -451,7 +451,7 @@ async function handleImportSubmit(event, url) {
   const formElement = event.currentTarget;
   const fileInput = formElement.querySelector('input[type="file"]');
   if (!fileInput.files.length) {
-    showNotice("Choose a file before uploading.", "error");
+    showNotice("Перед загрузкой выберите файл.", "error");
     return;
   }
 
@@ -463,7 +463,7 @@ async function handleImportSubmit(event, url) {
     prependImportSummary(summary);
     formElement.reset();
     clearDerivedOutputs();
-    showNotice(`${summary.dataset} import completed.`, "info");
+    showNotice(`Импорт набора "${translateDatasetName(summary.dataset)}" завершен.`, "info");
     await loadAssets();
     if (state.selectedElementId) {
       await loadInspections(state.selectedElementId);
@@ -544,14 +544,14 @@ function renderAssets() {
   const filter = refs.assetSearchInput.value.trim().toLowerCase();
   const filtered = state.assets.filter((asset) => `${asset.name} ${asset.address || ""} ${asset.purpose || ""}`.toLowerCase().includes(filter));
   if (!filtered.length) {
-    refs.assetList.innerHTML = '<div class="muted-state">No assets yet.</div>';
+    refs.assetList.innerHTML = '<div class="muted-state">Объекты пока не добавлены.</div>';
     return;
   }
   refs.assetList.innerHTML = filtered.map((asset) => `
     <article class="registry-item ${asset.id === state.selectedAssetId ? "active" : ""}">
       <button type="button" data-asset-id="${asset.id}">${escapeHtml(asset.name)}</button>
-      <div class="registry-meta">${escapeHtml(asset.address || "No address")}<br>${escapeHtml(asset.purpose || "No purpose")}</div>
-      <div class="registry-tag">${asset.id === state.editingAssetId ? "Loaded in form" : "Click to edit"}</div>
+      <div class="registry-meta">${escapeHtml(asset.address || "Адрес не указан")}<br>${escapeHtml(asset.purpose || "Назначение не указано")}</div>
+      <div class="registry-tag">${asset.id === state.editingAssetId ? "Загружен в форму" : "Нажмите для редактирования"}</div>
     </article>
   `).join("");
   refs.assetList.querySelectorAll("[data-asset-id]").forEach((button) => {
@@ -564,14 +564,14 @@ function renderAssets() {
 function renderElements() {
   refs.elementCounter.textContent = String(state.elements.length);
   if (!state.elements.length) {
-    refs.elementList.innerHTML = '<div class="muted-state">No elements for the selected asset.</div>';
+    refs.elementList.innerHTML = '<div class="muted-state">Для выбранного объекта элементы отсутствуют.</div>';
     return;
   }
   refs.elementList.innerHTML = state.elements.map((element) => `
     <article class="registry-item ${element.id === state.selectedElementId ? "active" : ""}">
       <button type="button" data-element-id="${element.id}">${escapeHtml(element.element_id)}</button>
-      <div class="registry-meta">${escapeHtml(element.element_type)}<br>${escapeHtml(element.environment_category)} | ${formatNumber(element.current_service_life_years, 1)} y</div>
-      <div class="registry-tag">${element.id === state.editingElementId ? "Loaded in form" : "Click to edit"}</div>
+      <div class="registry-meta">${escapeHtml(element.element_type)}<br>${escapeHtml(element.environment_category)} | ${formatNumber(element.current_service_life_years, 1)} лет</div>
+      <div class="registry-tag">${element.id === state.editingElementId ? "Загружен в форму" : "Нажмите для редактирования"}</div>
     </article>
   `).join("");
   refs.elementList.querySelectorAll("[data-element-id]").forEach((button) => {
@@ -584,14 +584,14 @@ function renderElements() {
 function renderInspections() {
   refs.inspectionCounter.textContent = String(state.inspections.length);
   if (!state.inspections.length) {
-    refs.inspectionList.innerHTML = '<div class="muted-state">No inspections for the selected element.</div>';
+    refs.inspectionList.innerHTML = '<div class="muted-state">Для выбранного элемента обследования отсутствуют.</div>';
     return;
   }
   refs.inspectionList.innerHTML = state.inspections.map((inspection) => `
     <article class="registry-item ${inspection.id === state.selectedInspectionId ? "active" : ""}">
-      <button type="button" data-inspection-id="${inspection.id}">${escapeHtml(inspection.inspection_code || `inspection-${inspection.id}`)}</button>
-      <div class="registry-meta">${escapeHtml(inspection.performed_at)} | ${escapeHtml(inspection.method)}<br>measurements: ${inspection.measurements.length}</div>
-      <div class="registry-tag">${inspection.id === state.editingInspectionId ? "Loaded in form" : "Click to edit"}</div>
+      <button type="button" data-inspection-id="${inspection.id}">${escapeHtml(inspection.inspection_code || `обследование-${inspection.id}`)}</button>
+      <div class="registry-meta">${escapeHtml(inspection.performed_at)} | ${escapeHtml(inspection.method)}<br>замеров: ${inspection.measurements.length}</div>
+      <div class="registry-tag">${inspection.id === state.editingInspectionId ? "Загружено в форму" : "Нажмите для редактирования"}</div>
     </article>
   `).join("");
   refs.inspectionList.querySelectorAll("[data-inspection-id]").forEach((button) => {
@@ -603,28 +603,36 @@ function renderInspections() {
 
 function renderCalculationResult(result) {
   if (!result) {
-    refs.calculationSummary.innerHTML = "Select an element and run a calculation.";
+    refs.calculationSummary.innerHTML = "Выберите элемент и выполните расчет.";
     refs.calculationSummary.classList.add("empty-block");
-    refs.timelineChart.innerHTML = "Timeline chart will appear here.";
+    refs.timelineChart.innerHTML = "Здесь появится график изменения показателей.";
     refs.timelineChart.classList.add("empty-block");
-    refs.scenarioTable.innerHTML = "Scenario comparison will appear here.";
+    refs.scenarioTable.innerHTML = "Здесь появится сравнение сценариев.";
     refs.scenarioTable.classList.add("empty-block");
     return;
   }
 
   refs.calculationSummary.classList.remove("empty-block");
   refs.calculationSummary.innerHTML = `
-    <article class="summary-card"><span>Environment</span><strong>${escapeHtml(result.environment_category)}</strong></article>
-    <article class="summary-card"><span>Scenario Count</span><strong>${result.results.length}</strong></article>
-    <article class="summary-card"><span>Exceedance Share</span><strong>${formatNumber(result.risk_profile.exceedance_share, 3)}</strong></article>
-    <article class="summary-card"><span>Next Inspection</span><strong>${formatNumber(result.risk_profile.next_inspection_within_years, 2)} y</strong></article>
-    <article class="summary-card"><span>Recommendation</span><strong>${escapeHtml(result.risk_profile.recommended_action)}</strong></article>
+    <article class="summary-card"><span>Среда</span><strong>${escapeHtml(result.environment_category)}</strong></article>
+    <article class="summary-card"><span>Режим прогноза</span><strong>${renderStatusPill(translateForecastMode(result.forecast_mode), toneForForecastMode(result.forecast_mode))}</strong></article>
+    <article class="summary-card"><span>Количество сценариев</span><strong>${result.results.length}</strong></article>
+    <article class="summary-card"><span>Доля превышений</span><strong>${formatNumber(result.risk_profile.exceedance_share, 3)}</strong></article>
+    <article class="summary-card"><span>Класс уверенности</span><strong>${renderStatusPill(`Класс ${escapeHtml(result.engineering_confidence_level)}`, toneForConfidence(result.engineering_confidence_level))}</strong></article>
+    <article class="summary-card"><span>Режим сопротивления</span><strong>${renderStatusPill(translateResistanceMode(result.resistance_mode), toneForResistanceMode(result.resistance_mode))}</strong></article>
+    <article class="summary-card"><span>Режим редьюсера</span><strong>${renderStatusPill(translateReducerMode(result.reducer_mode), toneForReducerMode(result.reducer_mode))}</strong></article>
+    <article class="summary-card"><span>Оценка скорости</span><strong>${renderStatusPill(translateRateFitMode(result.rate_fit_mode), toneForRateFitMode(result.rate_fit_mode))}</strong></article>
+    <article class="summary-card"><span>Режим ML</span><strong>${renderStatusPill(translateMlMode(result.ml_mode), toneForMlMode(result.ml_mode))}</strong></article>
+    <article class="summary-card"><span>Использовано данных</span><strong>${result.used_inspection_count} обслед. / ${result.used_measurement_count} замеров</strong></article>
+    <article class="summary-card"><span>Следующее обследование</span><strong>${formatNumber(result.risk_profile.next_inspection_within_years, 2)} лет</strong></article>
+    <article class="summary-card"><span>Рекомендация</span><strong>${escapeHtml(result.risk_profile.recommended_action)}</strong></article>
+    ${renderWarningCard("Ограничения и предупреждения", result.warnings, result.fallback_flags, "Явные warning/fallback-флаги не зарегистрированы.")}
   `;
 
   refs.scenarioTable.classList.remove("empty-block");
   refs.scenarioTable.innerHTML = `
     <table class="table">
-      <thead><tr><th>Scenario</th><th>Resistance</th><th>Demand</th><th>Margin</th><th>Remaining Life</th><th>State</th></tr></thead>
+      <thead><tr><th>Сценарий</th><th>Несущая способность</th><th>Воздействие</th><th>Запас</th><th>Остаточный ресурс</th><th>Режимы</th><th>Предупреждения</th><th>Состояние</th></tr></thead>
       <tbody>
         ${result.results.map((row) => `
           <tr>
@@ -632,8 +640,10 @@ function renderCalculationResult(result) {
             <td>${formatNumber(row.resistance_value, 3)} ${escapeHtml(row.resistance_unit)}</td>
             <td>${formatNumber(row.demand_value, 3)} ${escapeHtml(row.demand_unit)}</td>
             <td>${formatNumber(row.margin_value, 3)}</td>
-            <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} y`}</td>
-            <td>${row.limit_state_reached_within_horizon ? "Reached" : "Not reached"}</td>
+            <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} лет`}</td>
+            <td>${renderScenarioModes(row)}</td>
+            <td>${renderScenarioWarnings(row)}</td>
+            <td>${row.limit_state_reached_within_horizon ? "Достигнуто" : "Не достигнуто"}</td>
           </tr>
         `).join("")}
       </tbody>
@@ -651,84 +661,239 @@ function renderReportPreview() {
   const previewResult = state.reportPreview || state.calculation;
   const latestInspection = getLatestInspection();
   const request = readReportRequest();
-  const reportTitle = request.report_title || "Residual life report";
-  const author = request.author || "Engineering team";
-  const formats = request.output_formats.length ? request.output_formats.map((item) => item.toUpperCase()).join(", ") : "No format selected";
+  const reportTitle = request.report_title || "Отчет по остаточному ресурсу";
+  const author = request.author || "Инженерная группа";
+  const formats = request.output_formats.length ? request.output_formats.map((item) => item.toUpperCase()).join(", ") : "Формат не выбран";
   const previewNote = state.reportPreview
-    ? "Preview synchronized with the report form horizon."
+    ? "Предпросмотр синхронизирован с параметрами формы отчета."
     : state.calculation
-      ? "Preview uses the latest analysis snapshot already in memory."
-      : "Run Preview Report or the engineering analysis to embed scenario tables and recommendation text.";
+      ? "Предпросмотр использует последний расчет, уже загруженный в память."
+      : "Запустите предпросмотр отчета или инженерный расчет, чтобы добавить таблицы сценариев и рекомендации.";
 
   if (!element) {
     refs.reportPreview.classList.add("empty-block");
-    refs.reportPreview.innerHTML = "Select an element to build a report preview.";
+    refs.reportPreview.innerHTML = "Выберите элемент для формирования предварительного просмотра отчета.";
     return;
   }
 
   const scenarioTable = previewResult
     ? `
       <table class="table">
-        <thead><tr><th>Scenario</th><th>Margin</th><th>Remaining Life</th><th>State</th></tr></thead>
+        <thead><tr><th>Сценарий</th><th>Запас</th><th>Остаточный ресурс</th><th>Состояние</th></tr></thead>
         <tbody>
           ${previewResult.results.map((row) => `
             <tr>
               <td>${escapeHtml(row.scenario_name)}</td>
               <td>${formatNumber(row.margin_value, 3)}</td>
-              <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} y`}</td>
-              <td>${row.limit_state_reached_within_horizon ? "Reached" : "Not reached"}</td>
+              <td>${row.remaining_life_years == null ? "-" : `${formatNumber(row.remaining_life_years, 2)} лет`}</td>
+              <td>${row.limit_state_reached_within_horizon ? "Достигнуто" : "Не достигнуто"}</td>
             </tr>
           `).join("")}
         </tbody>
       </table>
     `
-    : '<p class="muted-state">No calculation snapshot is attached to the preview yet.</p>';
+    : '<p class="muted-state">К предпросмотру еще не привязан расчетный снимок.</p>';
 
   refs.reportPreview.classList.remove("empty-block");
   refs.reportPreview.innerHTML = `
     <div class="preview-cover">
-      <p class="eyebrow">Draft Report</p>
+      <p class="eyebrow">Черновик отчета</p>
       <h3>${escapeHtml(reportTitle)}</h3>
-      <p class="preview-text">${escapeHtml(asset ? asset.name : "Asset is not selected")} | ${escapeHtml(element.element_id)} | ${escapeHtml(element.environment_category)}</p>
+      <p class="preview-text">${escapeHtml(asset ? asset.name : "Объект не выбран")} | ${escapeHtml(element.element_id)} | ${escapeHtml(element.environment_category)}</p>
       <p class="preview-note">${escapeHtml(previewNote)}</p>
     </div>
     <div class="summary-grid">
-      <article class="summary-card"><span>Author</span><strong>${escapeHtml(author)}</strong></article>
-      <article class="summary-card"><span>Forecast Horizon</span><strong>${formatMaybeNumber(request.forecast_horizon_years, 1)} y</strong></article>
-      <article class="summary-card"><span>Time Step</span><strong>${formatMaybeNumber(request.time_step_years, 1)} y</strong></article>
-      <article class="summary-card"><span>Formats</span><strong>${escapeHtml(formats)}</strong></article>
-      <article class="summary-card"><span>Inspection Base</span><strong>${escapeHtml(latestInspection ? latestInspection.inspection_code || `inspection-${latestInspection.id}` : "No inspections")}</strong></article>
-      <article class="summary-card"><span>Recommended Action</span><strong>${escapeHtml(previewResult ? previewResult.risk_profile.recommended_action : "Pending calculation")}</strong></article>
+      <article class="summary-card"><span>Автор</span><strong>${escapeHtml(author)}</strong></article>
+      <article class="summary-card"><span>Горизонт прогноза</span><strong>${formatMaybeNumber(request.forecast_horizon_years, 1)} лет</strong></article>
+      <article class="summary-card"><span>Шаг по времени</span><strong>${formatMaybeNumber(request.time_step_years, 1)} лет</strong></article>
+      <article class="summary-card"><span>Форматы</span><strong>${escapeHtml(formats)}</strong></article>
+      <article class="summary-card"><span>База обследований</span><strong>${escapeHtml(latestInspection ? latestInspection.inspection_code || `обследование-${latestInspection.id}` : "Обследования отсутствуют")}</strong></article>
+      <article class="summary-card"><span>Рекомендованное действие</span><strong>${escapeHtml(previewResult ? previewResult.risk_profile.recommended_action : "Расчет еще не выполнен")}</strong></article>
+      <article class="summary-card"><span>Класс уверенности</span><strong>${previewResult ? renderStatusPill(`Класс ${escapeHtml(previewResult.engineering_confidence_level)}`, toneForConfidence(previewResult.engineering_confidence_level)) : "Ожидает расчет"}</strong></article>
+      <article class="summary-card"><span>Режимы</span><strong>${previewResult ? renderModeStack([
+        { label: translateForecastMode(previewResult.forecast_mode), tone: toneForForecastMode(previewResult.forecast_mode) },
+        { label: translateResistanceMode(previewResult.resistance_mode), tone: toneForResistanceMode(previewResult.resistance_mode) },
+        { label: translateReducerMode(previewResult.reducer_mode), tone: toneForReducerMode(previewResult.reducer_mode) },
+      ]) : "Ожидает расчет"}</strong></article>
     </div>
     <div class="preview-grid">
       <section class="preview-section">
-        <h3>Expected Sections</h3>
-        <div class="preview-line"><strong>1.</strong><span>Asset passport and responsibility context.</span></div>
-        <div class="preview-line"><strong>2.</strong><span>Element passport with section geometry, material, and zone model.</span></div>
-        <div class="preview-line"><strong>3.</strong><span>Inspection log summary with latest measurements and findings.</span></div>
-        <div class="preview-line"><strong>4.</strong><span>Baseline scenario comparison and capacity reserve evolution.</span></div>
-        <div class="preview-line"><strong>5.</strong><span>Residual life conclusion and next inspection recommendation.</span></div>
+        <h3>Ожидаемые разделы</h3>
+        <div class="preview-line"><strong>1.</strong><span>Паспорт объекта и контекст ответственности.</span></div>
+        <div class="preview-line"><strong>2.</strong><span>Паспорт элемента с геометрией сечения, материалом и моделью зон.</span></div>
+        <div class="preview-line"><strong>3.</strong><span>Сводка по обследованиям с последними замерами и выводами.</span></div>
+        <div class="preview-line"><strong>4.</strong><span>Сравнение сценариев и изменение запаса несущей способности.</span></div>
+        <div class="preview-line"><strong>5.</strong><span>Ограничения применимости, warning-флаги и fallback-режимы.</span></div>
+        <div class="preview-line"><strong>6.</strong><span>Вывод по остаточному ресурсу и срок следующего обследования.</span></div>
       </section>
       <section class="preview-section">
-        <h3>Context Snapshot</h3>
-        <div class="preview-line"><strong>Asset</strong><span>${escapeHtml(asset ? asset.name : "Not loaded")}</span></div>
-        <div class="preview-line"><strong>Element</strong><span>${escapeHtml(element.element_id)} (${escapeHtml(element.element_type)})</span></div>
-        <div class="preview-line"><strong>Service Life</strong><span>${formatNumber(element.current_service_life_years, 1)} y</span></div>
-        <div class="preview-line"><strong>Zones</strong><span>${element.zones.length}</span></div>
-        <div class="preview-line"><strong>Latest Inspection</strong><span>${escapeHtml(latestInspection ? latestInspection.performed_at : "No inspection data")}</span></div>
-        <div class="preview-line"><strong>Measurements</strong><span>${latestInspection ? latestInspection.measurements.length : 0}</span></div>
+        <h3>Снимок контекста</h3>
+        <div class="preview-line"><strong>Объект</strong><span>${escapeHtml(asset ? asset.name : "Не загружен")}</span></div>
+        <div class="preview-line"><strong>Элемент</strong><span>${escapeHtml(element.element_id)} (${escapeHtml(element.element_type)})</span></div>
+        <div class="preview-line"><strong>Срок службы</strong><span>${formatNumber(element.current_service_life_years, 1)} лет</span></div>
+        <div class="preview-line"><strong>Зоны</strong><span>${element.zones.length}</span></div>
+        <div class="preview-line"><strong>Последнее обследование</strong><span>${escapeHtml(latestInspection ? latestInspection.performed_at : "Данные обследований отсутствуют")}</span></div>
+        <div class="preview-line"><strong>Замеры</strong><span>${latestInspection ? latestInspection.measurements.length : 0}</span></div>
+      </section>
+      <section class="preview-section">
+        <h3>Инженерная интерпретация</h3>
+        <div class="preview-line"><strong>Режим прогноза</strong><span>${previewResult ? escapeHtml(translateForecastMode(previewResult.forecast_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Режим сопротивления</strong><span>${previewResult ? escapeHtml(translateResistanceMode(previewResult.resistance_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Режим редьюсера</strong><span>${previewResult ? escapeHtml(translateReducerMode(previewResult.reducer_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Оценка скорости</strong><span>${previewResult ? escapeHtml(translateRateFitMode(previewResult.rate_fit_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>Режим ML</strong><span>${previewResult ? escapeHtml(translateMlMode(previewResult.ml_mode)) : "Ожидает расчет"}</span></div>
+        <div class="preview-line"><strong>История данных</strong><span>${previewResult ? `${previewResult.used_inspection_count} обслед. / ${previewResult.used_measurement_count} замеров` : "Ожидает расчет"}</span></div>
       </section>
     </div>
     <section class="preview-section">
-      <h3>Calculation Extract</h3>
+      <h3>Фрагмент расчета</h3>
       ${scenarioTable}
+    </section>
+    <section class="preview-section">
+      <h3>Ограничения и предупреждения</h3>
+      ${previewResult
+        ? renderWarningPanel(previewResult.warnings, previewResult.fallback_flags, "В текущем снимке явные warning/fallback-флаги не зафиксированы.")
+        : '<p class="muted-state">После расчета здесь появятся ограничения применимости и предупреждения stage 2.</p>'}
     </section>
   `;
 }
 
+function renderScenarioModes(row) {
+  return renderModeStack([
+    { label: `Класс ${row.engineering_confidence_level}`, tone: toneForConfidence(row.engineering_confidence_level) },
+    { label: translateResistanceMode(row.resistance_mode), tone: toneForResistanceMode(row.resistance_mode) },
+    { label: translateReducerMode(row.reducer_mode), tone: toneForReducerMode(row.reducer_mode) },
+  ]);
+}
+
+function renderScenarioWarnings(row) {
+  const items = [
+    ...(row.warnings || []).map((warning) => `Предупреждение: ${warning}`),
+    ...((row.fallback_flags || []).map((flag) => `Fallback: ${translateFallbackFlag(flag)}`)),
+  ];
+  if (!items.length) {
+    return '<span class="muted-state">Без специальных предупреждений</span>';
+  }
+  return `<div class="scenario-note">${items.map((item) => escapeHtml(item)).join("<br>")}</div>`;
+}
+
+function renderWarningCard(title, warnings, fallbackFlags, emptyText) {
+  return `
+    <article class="summary-card summary-card-wide">
+      <span>${escapeHtml(title)}</span>
+      ${renderWarningPanel(warnings, fallbackFlags, emptyText)}
+    </article>
+  `;
+}
+
+function renderWarningPanel(warnings, fallbackFlags, emptyText) {
+  const items = [
+    ...((warnings || []).map((warning) => `Предупреждение: ${warning}`)),
+    ...((fallbackFlags || []).map((flag) => `Fallback: ${translateFallbackFlag(flag)}`)),
+  ];
+  if (!items.length) {
+    return `<p class="warning-empty">${escapeHtml(emptyText)}</p>`;
+  }
+  return `<ul class="warning-list">${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`;
+}
+
+function renderModeStack(items) {
+  return `<span class="meta-stack">${items.filter(Boolean).map((item) => renderStatusPill(item.label, item.tone)).join("")}</span>`;
+}
+
+function renderStatusPill(label, tone = "neutral") {
+  return `<span class="status-pill ${tone}">${escapeHtml(label)}</span>`;
+}
+
+function translateForecastMode(mode) {
+  if (mode === "baseline") return "Базовый";
+  if (mode === "observed") return "По наблюдениям";
+  if (mode === "hybrid") return "Гибридный";
+  return mode || "-";
+}
+
+function translateResistanceMode(mode) {
+  if (mode === "direct") return "Прямой";
+  if (mode === "approximate") return "Приближенный";
+  if (mode === "combined_basic") return "Комбинированный basic";
+  return mode || "-";
+}
+
+function translateReducerMode(mode) {
+  if (mode === "direct") return "Прямой редьюсер";
+  if (mode === "generic_fallback") return "Fallback generic";
+  return mode || "-";
+}
+
+function translateRateFitMode(mode) {
+  if (mode === "robust_history_fit") return "Робастная история";
+  if (mode === "two_point") return "Две точки";
+  if (mode === "single_observation") return "Одно обследование";
+  if (mode === "baseline_fallback") return "Базовый fallback";
+  return mode || "-";
+}
+
+function translateMlMode(mode) {
+  if (mode === "trained") return "Обученный ансамбль";
+  if (mode === "heuristic") return "Эвристика";
+  if (mode === "fallback") return "Резервный fallback";
+  return mode || "-";
+}
+
+function translateFallbackFlag(flag) {
+  if (flag === "generic_reduced") {
+    return "Эффективное сечение получено через generic_reduced.";
+  }
+  if (flag && flag.startsWith("forecast_source:") && flag.endsWith(":baseline")) {
+    const parts = flag.split(":");
+    return `Зона ${parts[1]}: прогноз продолжен по baseline-модели.`;
+  }
+  if (flag && flag.startsWith("resistance_mode:")) {
+    return `Режим сопротивления: ${translateResistanceMode(flag.split(":")[1])}.`;
+  }
+  return flag || "-";
+}
+
+function toneForConfidence(level) {
+  if (level === "A") return "ok";
+  if (level === "B") return "neutral";
+  if (level === "C") return "warn";
+  return "danger";
+}
+
+function toneForForecastMode(mode) {
+  if (mode === "hybrid") return "ok";
+  if (mode === "observed") return "neutral";
+  return "warn";
+}
+
+function toneForResistanceMode(mode) {
+  if (mode === "direct") return "ok";
+  if (mode === "approximate") return "warn";
+  return "danger";
+}
+
+function toneForReducerMode(mode) {
+  if (mode === "direct") return "ok";
+  return "warn";
+}
+
+function toneForRateFitMode(mode) {
+  if (mode === "robust_history_fit") return "ok";
+  if (mode === "two_point") return "neutral";
+  if (mode === "single_observation") return "warn";
+  return "danger";
+}
+
+function toneForMlMode(mode) {
+  if (mode === "trained") return "ok";
+  if (mode === "heuristic") return "neutral";
+  return "warn";
+}
+
 function renderTimelineChart(timeline, unit) {
   if (!timeline.length) {
-    return "No timeline data.";
+    return "Данные временной диаграммы отсутствуют.";
   }
   const width = 760;
   const height = 280;
@@ -760,24 +925,24 @@ function renderTimelineChart(timeline, unit) {
   }).join("");
   return `
     <div class="legend">
-      <span class="legend-item"><span class="legend-swatch" style="background:#1f6f8b"></span>Resistance (${escapeHtml(unit)})</span>
-      <span class="legend-item"><span class="legend-swatch" style="background:#b6542d"></span>Demand (${escapeHtml(unit)})</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:#1f6f8b"></span>Несущая способность (${escapeHtml(unit)})</span>
+      <span class="legend-item"><span class="legend-swatch" style="background:#b6542d"></span>Воздействие (${escapeHtml(unit)})</span>
     </div>
-    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Resistance and demand timeline chart">
+    <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="График изменения несущей способности и воздействия">
       ${gridLines}
       ${xTicks}
       <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#172126" stroke-width="1.2"></line>
       <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${height - margin.bottom}" stroke="#172126" stroke-width="1.2"></line>
       <polyline fill="none" stroke="#1f6f8b" stroke-width="3" points="${resistancePoints}"></polyline>
       <polyline fill="none" stroke="#b6542d" stroke-width="3" points="${demandPoints}"></polyline>
-      <text x="${width / 2}" y="${height - 6}" text-anchor="middle" fill="#5d696f" font-size="12">Age, years</text>
+      <text x="${width / 2}" y="${height - 6}" text-anchor="middle" fill="#5d696f" font-size="12">Возраст, лет</text>
     </svg>
   `;
 }
 
 function renderReports(artifacts) {
   if (!artifacts.length) {
-    refs.reportResults.innerHTML = "Generated reports will appear here.";
+    refs.reportResults.innerHTML = "Здесь появятся сформированные файлы отчета.";
     refs.reportResults.classList.add("empty-block");
     return;
   }
@@ -788,7 +953,7 @@ function renderReports(artifacts) {
         <a href="${artifact.download_url}">${escapeHtml(artifact.filename)}</a>
         <small>${artifact.format.toUpperCase()} | ${formatBytes(artifact.size_bytes)}</small>
       </div>
-      <a href="${artifact.download_url}">Download</a>
+      <a href="${artifact.download_url}">Скачать</a>
     </div>
   `).join("");
 }
@@ -801,8 +966,8 @@ function prependImportSummary(summary) {
   refs.importResults.innerHTML = `
     <div class="file-link">
       <div>
-        <strong>${escapeHtml(summary.dataset)}</strong>
-        <small>${summary.source_format.toUpperCase()} | processed ${summary.rows_processed} | created ${summary.created_count} | updated ${summary.updated_count}</small>
+        <strong>${escapeHtml(translateDatasetName(summary.dataset))}</strong>
+        <small>${summary.source_format.toUpperCase()} | обработано ${summary.rows_processed} | создано ${summary.created_count} | обновлено ${summary.updated_count}</small>
         ${errors}
       </div>
     </div>
@@ -812,11 +977,11 @@ function prependImportSummary(summary) {
 function resetAssetForm(showNoticeFlag = false) {
   refs.assetForm.reset();
   state.editingAssetId = null;
-  refs.assetModePill.textContent = "Create mode";
-  refs.assetHint.textContent = "Register a new asset or click an existing one to load it into the form.";
-  refs.assetSubmitBtn.textContent = "Create Asset";
+  refs.assetModePill.textContent = "Режим создания";
+  refs.assetHint.textContent = "Зарегистрируйте новый объект или выберите существующий для загрузки в форму.";
+  refs.assetSubmitBtn.textContent = "Создать объект";
   if (showNoticeFlag) {
-    showNotice("Asset form reset for a new record.", "info");
+    showNotice("Форма объекта очищена для новой записи.", "info");
   }
 }
 
@@ -827,9 +992,9 @@ function populateAssetForm(asset) {
   setFormValue(refs.assetForm, "commissioned_year", asset.commissioned_year);
   setFormValue(refs.assetForm, "purpose", asset.purpose);
   setFormValue(refs.assetForm, "responsibility_class", asset.responsibility_class);
-  refs.assetModePill.textContent = "Update mode";
-  refs.assetHint.textContent = `Editing asset #${asset.id}. Save to update the stored passport.`;
-  refs.assetSubmitBtn.textContent = "Update Asset";
+  refs.assetModePill.textContent = "Режим редактирования";
+  refs.assetHint.textContent = `Редактируется объект #${asset.id}. Сохраните форму для обновления паспорта.`;
+  refs.assetSubmitBtn.textContent = "Обновить объект";
 }
 
 function resetElementForm(showNoticeFlag = false) {
@@ -838,11 +1003,11 @@ function resetElementForm(showNoticeFlag = false) {
   defaultZoneRows().forEach((row) => addZoneRow(row));
   syncSectionFields();
   state.editingElementId = null;
-  refs.elementModePill.textContent = "Create mode";
-  refs.elementHint.textContent = "Fill the geometry, zones, and action model or load a stored element for editing.";
-  refs.elementSubmitBtn.textContent = "Create Element";
+  refs.elementModePill.textContent = "Режим создания";
+  refs.elementHint.textContent = "Заполните геометрию, зоны и расчетную схему либо загрузите сохраненный элемент для редактирования.";
+  refs.elementSubmitBtn.textContent = "Создать элемент";
   if (showNoticeFlag) {
-    showNotice("Element form reset for a new record.", "info");
+    showNotice("Форма элемента очищена для новой записи.", "info");
   }
 }
 
@@ -876,9 +1041,9 @@ function populateElementForm(element) {
   refs.zoneRows.innerHTML = "";
   element.zones.forEach((zone) => addZoneRow(zone));
   syncSectionFields();
-  refs.elementModePill.textContent = "Update mode";
-  refs.elementHint.textContent = `Editing element #${element.id}. Save to update geometry, zones, and design action data.`;
-  refs.elementSubmitBtn.textContent = "Update Element";
+  refs.elementModePill.textContent = "Режим редактирования";
+  refs.elementHint.textContent = `Редактируется элемент #${element.id}. Сохраните форму для обновления геометрии, зон и расчетных воздействий.`;
+  refs.elementSubmitBtn.textContent = "Обновить элемент";
 }
 
 function resetInspectionForm(showNoticeFlag = false) {
@@ -887,11 +1052,11 @@ function resetInspectionForm(showNoticeFlag = false) {
   defaultMeasurementRows().forEach((row) => addMeasurementRow(row));
   setFormValue(refs.inspectionForm, "performed_at", todayIso());
   state.editingInspectionId = null;
-  refs.inspectionModePill.textContent = "Create mode";
-  refs.inspectionHint.textContent = "Store a new inspection or click a saved one to update codes, findings, and measurements.";
-  refs.inspectionSubmitBtn.textContent = "Save Inspection";
+  refs.inspectionModePill.textContent = "Режим создания";
+  refs.inspectionHint.textContent = "Сохраните новое обследование или выберите существующее для обновления кода, выводов и замеров.";
+  refs.inspectionSubmitBtn.textContent = "Сохранить обследование";
   if (showNoticeFlag) {
-    showNotice("Inspection form reset for a new record.", "info");
+    showNotice("Форма обследования очищена для новой записи.", "info");
   }
 }
 
@@ -909,9 +1074,9 @@ function populateInspectionForm(inspection) {
   } else {
     defaultMeasurementRows().forEach((row) => addMeasurementRow(row));
   }
-  refs.inspectionModePill.textContent = "Update mode";
-  refs.inspectionHint.textContent = `Editing inspection #${inspection.id}. Save to replace the stored findings and measurements.`;
-  refs.inspectionSubmitBtn.textContent = "Update Inspection";
+  refs.inspectionModePill.textContent = "Режим редактирования";
+  refs.inspectionHint.textContent = `Редактируется обследование #${inspection.id}. Сохраните форму для замены выводов и замеров.`;
+  refs.inspectionSubmitBtn.textContent = "Обновить обследование";
 }
 
 function clearDerivedOutputs() {
@@ -1006,8 +1171,8 @@ function setFormValue(form, name, value) {
 function updateSelectedBadges() {
   const asset = state.assets.find((item) => item.id === state.selectedAssetId);
   const element = state.elements.find((item) => item.id === state.selectedElementId);
-  refs.selectedAssetBadge.textContent = asset ? asset.name : "none";
-  refs.selectedElementBadge.textContent = element ? element.element_id : "none";
+  refs.selectedAssetBadge.textContent = asset ? asset.name : "не выбран";
+  refs.selectedElementBadge.textContent = element ? element.element_id : "не выбран";
 }
 
 async function api(url, options = {}) {
@@ -1021,7 +1186,7 @@ async function api(url, options = {}) {
   const response = await fetch(url, request);
   const body = await safeParseJson(response);
   if (!response.ok) {
-    throw new Error(body?.detail || `Request failed with status ${response.status}`);
+    throw new Error(body?.detail || `Ошибка запроса, статус ${response.status}`);
   }
   return body;
 }
@@ -1081,6 +1246,13 @@ function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function translateDatasetName(dataset) {
+  if (dataset === "assets") return "объекты";
+  if (dataset === "elements") return "элементы";
+  if (dataset === "inspections") return "обследования";
+  return dataset;
 }
 
 function todayIso() {

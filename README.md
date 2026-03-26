@@ -11,7 +11,8 @@ remaining service life.
 - CRUD flows for assets, elements, zones, and inspection journals.
 - Persisted analysis runs with retrieval endpoints and compatibility aliases requested in the remediation notes.
 - Inspection-driven `delta_obs` and `v_z` evaluation per zone from stored surveys.
-- Hybrid degradation forecast that starts from the last observed state and applies an explicit rate-correction module.
+- Robust degradation-rate fitting with `baseline_fallback`, `single_observation`, `two_point`, and `robust_history_fit` modes.
+- Hybrid degradation forecast that starts from the last observed state and applies an explicit staged rate-correction module.
 - Automatic engineering report generation in `DOCX`, `PDF`, `HTML`, and `Markdown` for stored analyses.
 - Import from `CSV/XLSX` for assets, elements with zones, and inspections with measurements.
 - Built-in browser UI served directly by FastAPI at `/`.
@@ -32,11 +33,21 @@ remaining service life.
   - axial tension
   - axial compression with a stability factor
   - major-axis bending
+- Engineering-basic combined axial force and bending interaction check.
+- Refined remaining-life search with coarse scan, local bracket, and monotone root refinement.
+- Analysis payload, reports, and UI now expose:
+  - `engineering_confidence_level`
+  - `resistance_mode`
+  - `reducer_mode`
+  - `rate_fit_mode`
+  - `ml_mode`
+  - `warnings[]`
+  - `fallback_flags[]`
 - Scenario library for `C2` to `C5` environments and first-line what-if cases.
 - Three bundled demo datasets and one-command demo runner under `data_examples/` and `scripts/`.
 - Root project guidance in `AGENTS.md` and project-scoped Codex settings in `.codex/config.toml`.
-- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, and `docs/limitations.md`.
-- Pytest coverage for the baseline formulas and API integration.
+- Engineering documentation in `docs/architecture.md`, `docs/domain-model.md`, `docs/calculation-model.md`, `docs/ml-pipeline.md`, `docs/limitations.md`, `docs/section-verification.md`, `docs/data-normalization-roadmap.md`, and `docs/remediation_stage2.md`.
+- Pytest coverage for baseline formulas, API integration, reducers, rate fitting, refined limit-state search, combined checks, and report warnings.
 
 ## Important assumptions in this first slice
 
@@ -44,12 +55,12 @@ remaining service life.
   corrosion-rate multiplier described in the specification.
 - The current risk profile is scenario-based, not probabilistic. It reports the
   share of tested scenarios that reach a limit state within the forecast horizon.
-- The hybrid forecast uses an explicit heuristic ensemble interface in v1. It is
-  reproducible and auditable, but not yet trained on a large real dataset.
+- The hybrid forecast preserves a deterministic heuristic anchor and can evolve
+  to trained candidate models, but it is still not a final calibrated field model.
 - For unsupported profiles, `generic_reduced` applies a conservative thickness
-  reduction factor to user-supplied initial section properties.
+  reduction factor to user-supplied initial section properties and is surfaced as a fallback mode.
 - The MVP stores section, material, and action definitions as structured JSON
-  inside the element record to keep the data model flexible during early iteration.
+  inside the element record to keep the data model flexible during early iteration; stage 2 adds schema-versioned validation and a normalization roadmap.
 
 ## Quick start
 
@@ -64,6 +75,10 @@ uvicorn resurs_corrosion.main:app --reload
 Open `http://127.0.0.1:8000/docs`.
 
 Open `http://127.0.0.1:8000/` for the built-in engineering workspace.
+
+When the database is empty, the app automatically creates one demo object with
+an element and inspection history so the interface is not blank on first launch.
+To disable this bootstrap behavior, set `APP_SEED_DEMO_DATA=0`.
 
 Run the bundled demo case:
 
@@ -152,6 +167,7 @@ The root route `/` now serves a lightweight web application with:
 - inspection journal for the selected element
 - manual creation and update forms for assets, elements, zones, and measurements
 - engineering analysis with scenario table and timeline chart
+- confidence classes, mode badges, and explicit warning/fallback panels
 - report export links for `DOCX/PDF/HTML/Markdown`
 - bulk upload entry points for `CSV/XLSX`
 
@@ -162,6 +178,9 @@ The root route `/` now serves a lightweight web application with:
 - [docs/calculation-model.md](docs/calculation-model.md)
 - [docs/ml-pipeline.md](docs/ml-pipeline.md)
 - [docs/limitations.md](docs/limitations.md)
+- [docs/section-verification.md](docs/section-verification.md)
+- [docs/data-normalization-roadmap.md](docs/data-normalization-roadmap.md)
+- [docs/remediation_stage2.md](docs/remediation_stage2.md)
 - [docs/remediation_checklist.md](docs/remediation_checklist.md)
 
 ## Deployment note
@@ -212,8 +231,10 @@ The report includes:
 - object and element identification
 - input data and latest inspection summary
 - corrosion model coefficients
+- engineering confidence class and execution modes
 - current zone thickness state
 - scenario comparison
+- limitations and fallback warnings
 - timeline snapshot
 - recommendation and next inspection horizon
 

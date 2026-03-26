@@ -14,9 +14,31 @@ def test_healthcheck(client) -> None:
 def test_root_ui_served(client) -> None:
     response = client.get("/")
     assert response.status_code == 200
-    assert "Corrosion Residual Life Lab" in response.text
-    assert "Preview Report" in response.text
+    assert "Комплекс оценки коррозии и остаточного ресурса" in response.text
+    assert "Предпросмотр отчета" in response.text
     assert "Markdown" in response.text
+
+
+def test_empty_database_bootstraps_demo_workspace(seeded_client) -> None:
+    assets_response = seeded_client.get("/api/v1/assets")
+    assert assets_response.status_code == 200
+    assets = assets_response.json()
+    assert len(assets) == 1
+    assert assets[0]["name"] == "Демонстрационный объект"
+
+    asset_id = assets[0]["id"]
+    elements_response = seeded_client.get(f"/api/v1/assets/{asset_id}/elements")
+    assert elements_response.status_code == 200
+    elements = elements_response.json()
+    assert len(elements) == 1
+    assert elements[0]["element_id"] == "BEAM-DEMO-01"
+
+    element_id = elements[0]["id"]
+    inspections_response = seeded_client.get(f"/api/v1/elements/{element_id}/inspections")
+    assert inspections_response.status_code == 200
+    inspections = inspections_response.json()
+    assert len(inspections) == 2
+    assert inspections[0]["inspection_code"] == "DEMO-2026"
 
 
 def test_calculate_baseline_endpoint(client) -> None:
@@ -467,11 +489,11 @@ def test_generate_and_download_reports(client) -> None:
 
     html_alias = client.get(f"/report/{bundle['analysis_id']}?format=html")
     assert html_alias.status_code == 200
-    assert "Residual life report for BEAM-12" in html_alias.text
+    assert "Отчет по остаточному ресурсу для BEAM-12" in html_alias.text
 
     md_alias = client.get(f"/report/{bundle['analysis_id']}?format=md")
     assert md_alias.status_code == 200
-    assert "# Residual life report for BEAM-12" in md_alias.text
+    assert "# Отчет по остаточному ресурсу для BEAM-12" in md_alias.text
 
 
 def test_analysis_alias_persists_direct_request(client) -> None:
@@ -511,11 +533,11 @@ def test_analysis_alias_persists_direct_request(client) -> None:
 
     html_response = client.get(f"/report/{analysis['id']}?format=html")
     assert html_response.status_code == 200
-    assert "Residual life report for AL-01" in html_response.text
+    assert "Отчет по остаточному ресурсу для AL-01" in html_response.text
 
     md_response = client.get(f"/report/{analysis['id']}?format=md")
     assert md_response.status_code == 200
-    assert "# Residual life report for AL-01" in md_response.text
+    assert "# Отчет по остаточному ресурсу для AL-01" in md_response.text
 
 
 def test_import_assets_elements_and_inspections(client) -> None:

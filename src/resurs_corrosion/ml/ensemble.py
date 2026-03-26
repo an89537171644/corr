@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import asdict, dataclass
+import pickle
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional, Sequence, Tuple
+
+from .candidates import CandidateRuntimeModel, fit_candidate_models
+from .training import build_training_matrix, degradation_feature_to_list, normalize_training_input
 
 
 @dataclass
@@ -19,31 +23,147 @@ class DegradationFeatureVector:
     baseline_rate_mm_per_year: float
 
 
-class HybridRateEnsembleModel:
-    """Lightweight ensemble interface for hybrid degradation-rate correction.
+@dataclass
+class TrainingSummary:
+    dataset_journal: list[dict] = field(default_factory=list)
+    accepted_row_count: int = 0
+    candidate_names: list[str] = field(default_factory=list)
+    execution_mode: str = "heuristic"
 
-    The default implementation is intentionally engineering-first: it provides a
-    deterministic exponential correction factor that can later be replaced by a
-    trained stacking/averaging ensemble without changing the surrounding API.
+
+class HybridRateEnsembleModel:
+    """Engineering-first hybrid rate-correction ensemble.
+
+    The model keeps the legacy deterministic heuristic as the baseline/fallback.
+    When training data is provided, it can fit a lightweight candidate pool and
+    average available predictors while still anchoring predictions to the
+    heuristic factor.
     """
 
     name = "hybrid_rate_ensemble"
-    version = "0.1.0"
+    version = "0.2.0"
 
-    def __init__(self, fitted: bool = False) -> None:
+    def __init__(
+        self,
+        fitted: bool = False,
+        candidate_models: Optional[list[CandidateRuntimeModel]] = None,
+        training_summary: Optional[TrainingSummary] = None,
+    ) -> None:
         self.fitted = fitted
+        self.candidate_models = candidate_models or []
+        self.training_summary = training_summary or TrainingSummary()
 
-    def fit(self, dataset: Sequence[dict]) -> "HybridRateEnsembleModel":
-        # Placeholder for future sklearn/CatBoost based training. The v1 bundle
-        # keeps a deterministic heuristic so the engineering chain remains
-        # reproducible even without a curated training dataset.
+    def fit(self, dataset: Sequence[dict] | dict) -> "HybridRateEnsembleModel":
+        datasets = normalize_training_input(dataset)
+        matrix = build_training_matrix(datasets)
+        summary = TrainingSummary(
+            dataset_journal=matrix.dataset_journal,
+            accepted_row_count=len(matrix.targets),
+            execution_mode="heuristic",
+        )
+
+        if len(matrix.targets) < 3:
+            self.fitted = True
+            self.candidate_models = []
+            summary.execution_mode = "fallback"
+            self.training_summary = summary
+            return self
+
+        self.candidate_models = fit_candidate_models(matrix.features, matrix.targets, matrix.sample_weights)
         self.fitted = True
+        if self.candidate_models:
+            summary.candidate_names = [candidate.name for candidate in self.candidate_models]
+            summary.execution_mode = "trained"
+        else:
+            summary.execution_mode = "fallback"
+        self.training_summary = summary
         return self
 
     def predict(self, features: DegradationFeatureVector) -> float:
         return math.log(self.predict_rate_factor(features))
 
     def predict_rate_factor(self, features: DegradationFeatureVector) -> float:
+        heuristic_factor = self._heuristic_rate_factor(features)
+        if not self.candidate_models:
+            return heuristic_factor
+
+        feature_row = degradation_feature_to_list(features)
+        candidate_predictions = []
+        for candidate in self.candidate_models:
+            try:
+                candidate_predictions.append(candidate.predict_rate_factor(feature_row))
+            except Exception:
+                continue
+
+        if not candidate_predictions:
+            return heuristic_factor
+
+        candidate_mean = sum(candidate_predictions) / len(candidate_predictions)
+        blended = (0.60 * candidate_mean) + (0.40 * heuristic_factor)
+        return max(0.55, min(1.85, blended))
+
+    def predict_interval(self, features: DegradationFeatureVector) -> Tuple[float, float]:
+        heuristic_factor = self._heuristic_rate_factor(features)
+        if not self.candidate_models:
+            return max(0.0, heuristic_factor * 0.85), heuristic_factor * 1.15
+
+        feature_row = degradation_feature_to_list(features)
+        predictions = [heuristic_factor]
+        for candidate in self.candidate_models:
+            try:
+                predictions.append(candidate.predict_rate_factor(feature_row))
+            except Exception:
+                continue
+
+        lower = min(predictions)
+        upper = max(predictions)
+        padding = max(0.05, 0.08 * heuristic_factor)
+        return max(0.0, lower - padding), upper + padding
+
+    def save_model(self, file_path: Path) -> None:
+        payload = {
+            "format": "hybrid_rate_ensemble_v2",
+            "name": self.name,
+            "version": self.version,
+            "fitted": self.fitted,
+            "training_summary": asdict(self.training_summary),
+            "candidate_models": self.candidate_models,
+        }
+        file_path.write_bytes(pickle.dumps(payload))
+
+    @classmethod
+    def load_model(cls, file_path: Path) -> "HybridRateEnsembleModel":
+        raw_bytes = file_path.read_bytes()
+        try:
+            payload = json.loads(raw_bytes.decode("utf-8"))
+            model = cls(fitted=bool(payload.get("fitted", False)))
+            model.version = str(payload.get("version", cls.version))
+            return model
+        except Exception:
+            payload = pickle.loads(raw_bytes)
+            model = cls(
+                fitted=bool(payload.get("fitted", False)),
+                candidate_models=list(payload.get("candidate_models", [])),
+                training_summary=TrainingSummary(**payload.get("training_summary", {})),
+            )
+            model.version = str(payload.get("version", cls.version))
+            return model
+
+    def model_info(self) -> dict:
+        notes = "Legacy heuristic fallback." if not self.candidate_models else "Candidate-model ensemble anchored to heuristic fallback."
+        return {
+            "name": self.name,
+            "version": self.version,
+            "fitted": self.fitted,
+            "notes": notes,
+            "execution_mode": self.training_summary.execution_mode,
+            "candidate_count": len(self.candidate_models),
+            "candidate_names": list(self.training_summary.candidate_names),
+            "dataset_journal": list(self.training_summary.dataset_journal),
+            "accepted_row_count": self.training_summary.accepted_row_count,
+        }
+
+    def _heuristic_rate_factor(self, features: DegradationFeatureVector) -> float:
         severity_bias = {
             "C2": 0.00,
             "C3": 0.04,
@@ -62,33 +182,6 @@ class HybridRateEnsembleModel:
 
         log_adjustment = severity_bias + surface_bias + pitting_bias + pit_loss_bias + inspection_bias + quality_bias + rate_bias
         return max(0.55, min(1.85, math.exp(log_adjustment)))
-
-    def predict_interval(self, features: DegradationFeatureVector) -> Tuple[float, float]:
-        factor = self.predict_rate_factor(features)
-        return max(0.0, factor * 0.85), factor * 1.15
-
-    def save_model(self, file_path: Path) -> None:
-        payload = {
-            "name": self.name,
-            "version": self.version,
-            "fitted": self.fitted,
-        }
-        file_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
-
-    @classmethod
-    def load_model(cls, file_path: Path) -> "HybridRateEnsembleModel":
-        payload = json.loads(file_path.read_text(encoding="utf-8"))
-        model = cls(fitted=bool(payload.get("fitted", False)))
-        model.version = str(payload.get("version", cls.version))
-        return model
-
-    def model_info(self) -> dict:
-        return {
-            "name": self.name,
-            "version": self.version,
-            "fitted": self.fitted,
-            "notes": "Deterministic exponential rate-factor heuristic with a stable fit/predict/save interface.",
-        }
 
 
 def build_default_hybrid_model(dataset: Optional[Iterable[dict]] = None) -> HybridRateEnsembleModel:

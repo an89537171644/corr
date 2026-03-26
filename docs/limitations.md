@@ -6,17 +6,17 @@ The MVP is intentionally engineering-first, but still simplified.
 
 - It is not a full SP 16 check engine.
 - Connection design, local buckling, and detailed stability checks are not fully implemented.
-- Remaining life is found on a time grid, not through a closed-form reliability solution.
+- Remaining life is refined inside a local bracket, but still not derived from a full probabilistic reliability model.
 
 ## Hybrid forecast scope
 
-- The hybrid mode currently corrects degradation rate with a deterministic ensemble heuristic.
-- It is a scaffolding-compatible replacement point for trained models, not a final calibrated ML system.
+- The hybrid mode now supports heuristic, trained, and fallback execution modes, but it is still a degradation-rate correction contour rather than a final calibrated reliability model.
+- Candidate ML backends are optional and may be unavailable in lightweight deployments.
 - The code never predicts `R(t)` directly with ML as the main path.
 
 ## Inspection logic
 
-- For two or more inspections, the observed rate currently uses the last two valid zone observations.
+- For 3+ inspections the rate fit is robust-history based, but confidence intervals remain engineering approximations rather than full statistical posteriors.
 - If no inspection is available for a zone, the calculation falls back to the classical atmospheric baseline.
 - Measurement units are stored, but automatic conversion is only implemented for `mm`, `cm`, and `m`.
 
@@ -24,6 +24,7 @@ The MVP is intentionally engineering-first, but still simplified.
 
 - `angle` is handled as a composite-section engineering approximation.
 - `tube` currently means circular hollow section in the reducer.
+- `generic_reduced` remains a conservative fallback and automatically lowers the engineering confidence class.
 - The browser UI still prioritizes the original common shapes; the extended section set is first-class in the API/import layer.
 
 ## Platform note

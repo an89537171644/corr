@@ -429,6 +429,54 @@ button:hover {
   font-size: 1rem;
 }
 
+.summary-card-wide {
+  grid-column: 1 / -1;
+}
+
+.meta-stack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(23, 33, 38, 0.1);
+  background: rgba(25, 51, 58, 0.08);
+  color: var(--bg-deep);
+  font-size: 0.76rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.status-pill.ok {
+  background: rgba(42, 124, 101, 0.12);
+  border-color: rgba(42, 124, 101, 0.24);
+  color: var(--ok);
+}
+
+.status-pill.neutral {
+  background: rgba(25, 51, 58, 0.08);
+  border-color: rgba(25, 51, 58, 0.14);
+  color: var(--bg-deep);
+}
+
+.status-pill.warn {
+  background: rgba(182, 84, 45, 0.12);
+  border-color: rgba(182, 84, 45, 0.24);
+  color: var(--accent);
+}
+
+.status-pill.danger {
+  background: rgba(168, 57, 45, 0.12);
+  border-color: rgba(168, 57, 45, 0.22);
+  color: var(--danger);
+}
+
 .chart-shell,
 .table-shell,
 .stack-list,
@@ -502,6 +550,24 @@ button:hover {
 
 .preview-line strong {
   color: var(--ink);
+}
+
+.warning-list {
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.warning-list li + li {
+  margin-top: 8px;
+}
+
+.warning-empty,
+.scenario-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
 }
 
 .chart-shell svg {

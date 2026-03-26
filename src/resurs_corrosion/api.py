@@ -62,10 +62,10 @@ router = APIRouter()
 
 async def read_upload_contents(upload: UploadFile) -> tuple[str, bytes]:
     if not upload.filename:
-        raise HTTPException(status_code=400, detail="Uploaded file must have a filename.")
+        raise HTTPException(status_code=400, detail="У загруженного файла должно быть имя.")
     contents = await upload.read()
     if not contents:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+        raise HTTPException(status_code=400, detail="Загруженный файл пуст.")
     return upload.filename, contents
 
 
@@ -87,7 +87,7 @@ def list_scenarios(environment_category: str) -> dict:
     try:
         category = EnvironmentCategory(environment_category.upper())
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail="Unsupported environment category.") from exc
+        raise HTTPException(status_code=400, detail="Неподдерживаемая категория среды.") from exc
 
     profile = get_environment_profile(category)
     scenarios = default_scenario_library(category)
@@ -146,7 +146,7 @@ def post_object(payload: AssetCreate, session: Session = Depends(get_session)) -
 def get_asset_by_id(asset_id: int, session: Session = Depends(get_session)) -> AssetRead:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     return asset_to_schema(asset)
 
 
@@ -159,7 +159,7 @@ def get_object_by_id(asset_id: int, session: Session = Depends(get_session)) -> 
 def put_asset(asset_id: int, payload: AssetCreate, session: Session = Depends(get_session)) -> AssetRead:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     return asset_to_schema(update_asset(session, asset, payload))
 
 
@@ -167,7 +167,7 @@ def put_asset(asset_id: int, payload: AssetCreate, session: Session = Depends(ge
 def remove_asset(asset_id: int, session: Session = Depends(get_session)) -> Response:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     delete_asset(session, asset)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -176,7 +176,7 @@ def remove_asset(asset_id: int, session: Session = Depends(get_session)) -> Resp
 def get_elements_for_asset(asset_id: int, session: Session = Depends(get_session)) -> List[ElementRead]:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     return [element_to_schema(element) for element in list_elements_by_asset(session, asset_id)]
 
 
@@ -189,7 +189,7 @@ def get_elements_for_object(asset_id: int, session: Session = Depends(get_sessio
 def post_element(asset_id: int, payload: ElementCreate, session: Session = Depends(get_session)) -> ElementRead:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     return element_to_schema(create_element(session, asset_id, payload))
 
 
@@ -201,7 +201,7 @@ async def import_elements_for_asset(
 ) -> ImportSummary:
     asset = get_asset(session, asset_id)
     if asset is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(status_code=404, detail="Объект не найден.")
     filename, contents = await read_upload_contents(file)
     try:
         return import_elements(session, asset_id, filename, contents)
@@ -213,7 +213,7 @@ async def import_elements_for_asset(
 def get_element_by_id(element_id: int, session: Session = Depends(get_session)) -> ElementRead:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     return element_to_schema(element)
 
 
@@ -221,7 +221,7 @@ def get_element_by_id(element_id: int, session: Session = Depends(get_session)) 
 def put_element(element_id: int, payload: ElementCreate, session: Session = Depends(get_session)) -> ElementRead:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     return element_to_schema(update_element(session, element, payload))
 
 
@@ -229,7 +229,7 @@ def put_element(element_id: int, payload: ElementCreate, session: Session = Depe
 def remove_element(element_id: int, session: Session = Depends(get_session)) -> Response:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     delete_element(session, element)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -238,7 +238,7 @@ def remove_element(element_id: int, session: Session = Depends(get_session)) -> 
 def get_inspections_for_element(element_id: int, session: Session = Depends(get_session)) -> List[InspectionRead]:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     return [inspection_to_schema(item) for item in list_inspections_for_element(session, element_id)]
 
 
@@ -250,7 +250,7 @@ def get_inspections_for_element(element_id: int, session: Session = Depends(get_
 def post_inspection(element_id: int, payload: InspectionCreate, session: Session = Depends(get_session)) -> InspectionRead:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     return inspection_to_schema(create_inspection(session, element_id, payload))
 
 
@@ -262,7 +262,7 @@ async def import_inspections_for_element(
 ) -> ImportSummary:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     filename, contents = await read_upload_contents(file)
     try:
         return import_inspections(session, element_id, filename, contents)
@@ -274,7 +274,7 @@ async def import_inspections_for_element(
 def get_inspection_by_id(inspection_id: int, session: Session = Depends(get_session)) -> InspectionRead:
     inspection = get_inspection(session, inspection_id)
     if inspection is None:
-        raise HTTPException(status_code=404, detail="Inspection not found.")
+        raise HTTPException(status_code=404, detail="Обследование не найдено.")
     return inspection_to_schema(inspection)
 
 
@@ -286,7 +286,7 @@ def put_inspection(
 ) -> InspectionRead:
     inspection = get_inspection(session, inspection_id)
     if inspection is None:
-        raise HTTPException(status_code=404, detail="Inspection not found.")
+        raise HTTPException(status_code=404, detail="Обследование не найдено.")
     return inspection_to_schema(update_inspection(session, inspection, payload))
 
 
@@ -294,7 +294,7 @@ def put_inspection(
 def remove_inspection(inspection_id: int, session: Session = Depends(get_session)) -> Response:
     inspection = get_inspection(session, inspection_id)
     if inspection is None:
-        raise HTTPException(status_code=404, detail="Inspection not found.")
+        raise HTTPException(status_code=404, detail="Обследование не найдено.")
     delete_inspection(session, inspection)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -308,7 +308,7 @@ def calculate_baseline_for_element(
 ) -> dict:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     request = build_calculation_request(element, payload)
     result = run_calculation(request)
     analysis_run = create_analysis_run(session, request, result, element_id=element_id)
@@ -329,7 +329,7 @@ def create_baseline_report(
 ) -> ReportBundle:
     element = get_element(session, element_id)
     if element is None:
-        raise HTTPException(status_code=404, detail="Element not found.")
+        raise HTTPException(status_code=404, detail="Элемент не найден.")
     request = build_calculation_request(element, payload)
     result = run_calculation(request)
     analysis_run = create_analysis_run(session, request, result, element_id=element_id)
@@ -356,7 +356,7 @@ def run_analysis_alias(request: CalculationRequest, session: Session = Depends(g
 def get_analysis_by_id(analysis_id: int, session: Session = Depends(get_session)) -> AnalysisRunRead:
     analysis_run = get_analysis_run(session, analysis_id)
     if analysis_run is None:
-        raise HTTPException(status_code=404, detail="Analysis not found.")
+        raise HTTPException(status_code=404, detail="Расчет не найден.")
     return analysis_run_to_schema(analysis_run)
 
 
@@ -369,7 +369,7 @@ def get_analysis_report(
 ):
     analysis_run = get_analysis_run(session, analysis_id)
     if analysis_run is None:
-        raise HTTPException(status_code=404, detail="Analysis not found.")
+        raise HTTPException(status_code=404, detail="Расчет не найден.")
 
     context = build_report_context_from_analysis(analysis_run_to_schema(analysis_run))
     normalized_format = format.strip().lower()
@@ -377,18 +377,18 @@ def get_analysis_report(
         return HTMLResponse(content=build_html_report(context))
     if normalized_format in {"md", "markdown"}:
         return PlainTextResponse(content=build_markdown_report(context), media_type="text/markdown")
-    raise HTTPException(status_code=400, detail="Unsupported report format. Use html or md.")
+    raise HTTPException(status_code=400, detail="Неподдерживаемый формат отчета. Используйте html или md.")
 
 
 @router.get("/api/v1/reports/{element_id}/{filename}")
 def download_report(element_id: int, filename: str, http_request: Request) -> FileResponse:
     if Path(filename).name != filename:
-        raise HTTPException(status_code=400, detail="Invalid filename.")
+        raise HTTPException(status_code=400, detail="Недопустимое имя файла.")
 
     report_path = (http_request.app.state.reports_dir / f"element-{element_id}" / filename).resolve()
     base_dir = http_request.app.state.reports_dir.resolve()
     if base_dir not in report_path.parents or not report_path.exists():
-        raise HTTPException(status_code=404, detail="Report not found.")
+        raise HTTPException(status_code=404, detail="Отчет не найден.")
 
     suffix = report_path.suffix.lower()
     if suffix == ".pdf":

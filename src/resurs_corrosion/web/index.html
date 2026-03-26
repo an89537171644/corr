@@ -1,34 +1,34 @@
 <!doctype html>
-<html lang="en">
+<html lang="ru">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Corrosion Residual Life Lab</title>
+    <title>Комплекс оценки коррозии и остаточного ресурса</title>
     <link rel="stylesheet" href="/static/styles.css">
   </head>
   <body>
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">Engineering MVP</p>
-          <h1>Corrosion Residual Life Lab</h1>
+          <p class="eyebrow">Инженерный MVP</p>
+          <h1>Комплекс оценки коррозии и остаточного ресурса</h1>
           <p class="hero-text">
-            Browser workspace for asset cards, inspection logs, baseline corrosion forecasting,
-            and engineering report issue with one stored project flow.
+            Рабочее пространство для паспортов объектов, журналов обследований, прогноза коррозии
+            и выпуска инженерных отчетов в едином сохраненном контуре проекта.
           </p>
         </div>
         <div class="hero-metrics">
           <div class="metric">
             <span class="metric-label">API</span>
-            <strong id="healthBadge">checking</strong>
+            <strong id="healthBadge">проверка</strong>
           </div>
           <div class="metric">
-            <span class="metric-label">Selected Asset</span>
-            <strong id="selectedAssetBadge">none</strong>
+            <span class="metric-label">Выбранный объект</span>
+            <strong id="selectedAssetBadge">не выбран</strong>
           </div>
           <div class="metric">
-            <span class="metric-label">Selected Element</span>
-            <strong id="selectedElementBadge">none</strong>
+            <span class="metric-label">Выбранный элемент</span>
+            <strong id="selectedElementBadge">не выбран</strong>
           </div>
         </div>
       </header>
@@ -39,27 +39,27 @@
         <aside class="sidebar">
           <section class="panel">
             <div class="panel-head">
-              <h2>Assets</h2>
-              <button type="button" class="ghost-button" id="refreshAssetsBtn">Refresh</button>
+              <h2>Объекты</h2>
+              <button type="button" class="ghost-button" id="refreshAssetsBtn">Обновить</button>
             </div>
-            <input id="assetSearchInput" class="search-input" type="search" placeholder="Search asset">
+            <input id="assetSearchInput" class="search-input" type="search" placeholder="Поиск объекта">
             <div id="assetList" class="registry-list"></div>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Elements</h2>
+              <h2>Элементы</h2>
               <span id="elementCounter" class="panel-meta">0</span>
             </div>
-            <div id="elementList" class="registry-list muted-state">Select an asset to load elements.</div>
+            <div id="elementList" class="registry-list muted-state">Выберите объект для загрузки элементов.</div>
           </section>
 
           <section class="panel">
             <div class="panel-head">
-              <h2>Inspections</h2>
+              <h2>Обследования</h2>
               <span id="inspectionCounter" class="panel-meta">0</span>
             </div>
-            <div id="inspectionList" class="registry-list muted-state">Select an element to load inspections.</div>
+            <div id="inspectionList" class="registry-list muted-state">Выберите элемент для загрузки обследований.</div>
           </section>
         </aside>
 
@@ -68,37 +68,37 @@
             <section class="card">
               <div class="card-head">
                 <div class="card-head-copy">
-                  <span id="assetModePill" class="mode-pill">Create mode</span>
-                  <h2>Asset Card</h2>
-                  <p id="assetHint">Register a new asset or click an existing one to load it into the form.</p>
+                  <span id="assetModePill" class="mode-pill">Режим создания</span>
+                  <h2>Паспорт объекта</h2>
+                  <p id="assetHint">Зарегистрируйте новый объект или выберите существующий для загрузки в форму.</p>
                 </div>
                 <div class="card-actions">
-                  <button type="button" class="ghost-button" id="newAssetBtn">New Asset</button>
+                  <button type="button" class="ghost-button" id="newAssetBtn">Новый объект</button>
                 </div>
               </div>
               <form id="assetForm" class="form-grid">
                 <label>
-                  <span>Name</span>
+                  <span>Наименование</span>
                   <input name="name" required>
                 </label>
                 <label>
-                  <span>Address</span>
+                  <span>Адрес</span>
                   <input name="address">
                 </label>
                 <label>
-                  <span>Commissioned Year</span>
+                  <span>Год ввода в эксплуатацию</span>
                   <input name="commissioned_year" type="number" min="1800" max="2500">
                 </label>
                 <label>
-                  <span>Purpose</span>
+                  <span>Назначение</span>
                   <input name="purpose">
                 </label>
                 <label>
-                  <span>Responsibility Class</span>
+                  <span>Класс ответственности</span>
                   <input name="responsibility_class">
                 </label>
                 <div class="form-actions">
-                  <button type="submit" id="assetSubmitBtn">Create Asset</button>
+                  <button type="submit" id="assetSubmitBtn">Создать объект</button>
                 </div>
               </form>
             </section>
@@ -106,37 +106,37 @@
             <section class="card wide">
               <div class="card-head">
                 <div class="card-head-copy">
-                  <span id="elementModePill" class="mode-pill">Create mode</span>
-                  <h2>Element Card</h2>
-                  <p id="elementHint">Fill the geometry, zones, and action model or load a stored element for editing.</p>
+                  <span id="elementModePill" class="mode-pill">Режим создания</span>
+                  <h2>Паспорт элемента</h2>
+                  <p id="elementHint">Заполните геометрию, зоны и расчетную схему либо загрузите сохраненный элемент для редактирования.</p>
                 </div>
                 <div class="card-actions">
-                  <button type="button" class="ghost-button" id="newElementBtn">New Element</button>
+                  <button type="button" class="ghost-button" id="newElementBtn">Новый элемент</button>
                 </div>
               </div>
               <form id="elementForm" class="form-grid dense-grid">
                 <label>
-                  <span>Element ID</span>
+                  <span>Код элемента</span>
                   <input name="element_id" required>
                 </label>
                 <label>
-                  <span>Element Type</span>
-                  <input name="element_type" required value="beam">
+                  <span>Тип элемента</span>
+                  <input name="element_type" required value="балка">
                 </label>
                 <label>
-                  <span>Steel Grade</span>
+                  <span>Марка стали</span>
                   <input name="steel_grade" value="C255">
                 </label>
                 <label>
-                  <span>Work Scheme</span>
-                  <input name="work_scheme" value="bending">
+                  <span>Расчетная схема</span>
+                  <input name="work_scheme" value="изгиб">
                 </label>
                 <label>
-                  <span>Operating Zone</span>
+                  <span>Зона эксплуатации</span>
                   <input name="operating_zone">
                 </label>
                 <label>
-                  <span>Environment</span>
+                  <span>Среда</span>
                   <select name="environment_category">
                     <option value="C2">C2</option>
                     <option value="C3" selected>C3</option>
@@ -145,55 +145,55 @@
                   </select>
                 </label>
                 <label>
-                  <span>Current Service Life, y</span>
+                  <span>Текущий срок службы, лет</span>
                   <input name="current_service_life_years" type="number" step="0.1" value="12">
                 </label>
                 <label>
-                  <span>Section Type</span>
+                  <span>Тип сечения</span>
                   <select name="section_type" id="sectionTypeSelect">
-                    <option value="plate">plate</option>
-                    <option value="i_section" selected>i_section</option>
-                    <option value="generic_reduced">generic_reduced</option>
+                    <option value="plate">лист</option>
+                    <option value="i_section" selected>двутавр</option>
+                    <option value="generic_reduced">обобщенное</option>
                   </select>
                 </label>
                 <label class="section-field plate-field">
-                  <span>Width, mm</span>
+                  <span>Ширина, мм</span>
                   <input name="width_mm" type="number" step="0.001">
                 </label>
                 <label class="section-field plate-field">
-                  <span>Thickness, mm</span>
+                  <span>Толщина, мм</span>
                   <input name="thickness_mm" type="number" step="0.001">
                 </label>
                 <label class="section-field i-section-field">
-                  <span>Height, mm</span>
+                  <span>Высота, мм</span>
                   <input name="height_mm" type="number" step="0.001" value="300">
                 </label>
                 <label class="section-field i-section-field">
-                  <span>Flange Width, mm</span>
+                  <span>Ширина полки, мм</span>
                   <input name="flange_width_mm" type="number" step="0.001" value="150">
                 </label>
                 <label class="section-field i-section-field">
-                  <span>Web Thickness, mm</span>
+                  <span>Толщина стенки, мм</span>
                   <input name="web_thickness_mm" type="number" step="0.001" value="8">
                 </label>
                 <label class="section-field i-section-field">
-                  <span>Flange Thickness, mm</span>
+                  <span>Толщина полки, мм</span>
                   <input name="flange_thickness_mm" type="number" step="0.001" value="12">
                 </label>
                 <label class="section-field generic-field">
-                  <span>Reference Thickness, mm</span>
+                  <span>Базовая толщина, мм</span>
                   <input name="reference_thickness_mm" type="number" step="0.001">
                 </label>
                 <label class="section-field generic-field">
-                  <span>Area0, mm2</span>
+                  <span>Площадь A0, мм2</span>
                   <input name="area0_mm2" type="number" step="0.001">
                 </label>
                 <label class="section-field generic-field">
-                  <span>Inertia0, mm4</span>
+                  <span>Момент инерции I0, мм4</span>
                   <input name="inertia0_mm4" type="number" step="0.001">
                 </label>
                 <label class="section-field generic-field">
-                  <span>Section Modulus0, mm3</span>
+                  <span>Момент сопротивления W0, мм3</span>
                   <input name="section_modulus0_mm3" type="number" step="0.001">
                 </label>
                 <label>
@@ -201,40 +201,40 @@
                   <input name="fy_mpa" type="number" step="0.001" value="245">
                 </label>
                 <label>
-                  <span>Gamma m</span>
+                  <span>Коэффициент gamma m</span>
                   <input name="gamma_m" type="number" step="0.001" value="1.05">
                 </label>
                 <label>
-                  <span>Stability Factor</span>
+                  <span>Коэффициент устойчивости</span>
                   <input name="stability_factor" type="number" step="0.001" value="0.9">
                 </label>
                 <label>
-                  <span>Check Type</span>
+                  <span>Тип проверки</span>
                   <select name="check_type">
-                    <option value="axial_tension">axial_tension</option>
-                    <option value="axial_compression">axial_compression</option>
-                    <option value="bending_major" selected>bending_major</option>
+                    <option value="axial_tension">растяжение</option>
+                    <option value="axial_compression">сжатие</option>
+                    <option value="bending_major" selected>изгиб по главной оси</option>
                   </select>
                 </label>
                 <label>
-                  <span>Demand Value</span>
+                  <span>Расчетное усилие</span>
                   <input name="demand_value" type="number" step="0.001" value="110">
                 </label>
                 <label>
-                  <span>Demand Growth / year</span>
+                  <span>Рост нагрузки в год</span>
                   <input name="demand_growth_factor_per_year" type="number" step="0.0001" value="0">
                 </label>
 
                 <div class="subgrid span-all">
                   <div class="subgrid-head">
-                    <h3>Zones</h3>
-                    <button type="button" class="ghost-button" id="addZoneBtn">Add Zone</button>
+                    <h3>Зоны</h3>
+                    <button type="button" class="ghost-button" id="addZoneBtn">Добавить зону</button>
                   </div>
                   <div id="zoneRows" class="row-stack"></div>
                 </div>
 
                 <div class="form-actions span-all">
-                  <button type="submit" id="elementSubmitBtn">Create Element</button>
+                  <button type="submit" id="elementSubmitBtn">Создать элемент</button>
                 </div>
               </form>
             </section>
@@ -242,93 +242,93 @@
             <section class="card wide">
               <div class="card-head">
                 <div class="card-head-copy">
-                  <span id="inspectionModePill" class="mode-pill">Create mode</span>
-                  <h2>Inspection Log</h2>
-                  <p id="inspectionHint">Store a new inspection or click a saved one to update codes, findings, and measurements.</p>
+                  <span id="inspectionModePill" class="mode-pill">Режим создания</span>
+                  <h2>Журнал обследований</h2>
+                  <p id="inspectionHint">Сохраните новое обследование или выберите существующее для обновления кода, выводов и замеров.</p>
                 </div>
                 <div class="card-actions">
-                  <button type="button" class="ghost-button" id="newInspectionBtn">New Inspection</button>
+                  <button type="button" class="ghost-button" id="newInspectionBtn">Новое обследование</button>
                 </div>
               </div>
               <form id="inspectionForm" class="form-grid dense-grid">
                 <label>
-                  <span>Inspection Code</span>
+                  <span>Код обследования</span>
                   <input name="inspection_code" value="INSP-001">
                 </label>
                 <label>
-                  <span>Performed At</span>
+                  <span>Дата обследования</span>
                   <input name="performed_at" type="date" required>
                 </label>
                 <label>
-                  <span>Method</span>
-                  <input name="method" value="ultrasonic">
+                  <span>Метод</span>
+                  <input name="method" value="ультразвуковой контроль">
                 </label>
                 <label>
-                  <span>Executor</span>
+                  <span>Исполнитель</span>
                   <input name="executor">
                 </label>
                 <label class="span-all">
-                  <span>Findings</span>
+                  <span>Выводы</span>
                   <textarea name="findings" rows="3"></textarea>
                 </label>
 
                 <div class="subgrid span-all">
                   <div class="subgrid-head">
-                    <h3>Measurements</h3>
-                    <button type="button" class="ghost-button" id="addMeasurementBtn">Add Measurement</button>
+                    <h3>Замеры</h3>
+                    <button type="button" class="ghost-button" id="addMeasurementBtn">Добавить замер</button>
                   </div>
                   <div id="measurementRows" class="row-stack"></div>
                 </div>
 
                 <div class="form-actions span-all">
-                  <button type="submit" id="inspectionSubmitBtn">Save Inspection</button>
+                  <button type="submit" id="inspectionSubmitBtn">Сохранить обследование</button>
                 </div>
               </form>
             </section>
 
             <section class="card wide">
               <div class="card-head">
-                <h2>Engineering Analysis</h2>
-                <p>Run the stored element through the inspection-aware baseline or hybrid scenario set and compare resistance, demand, and margin over time.</p>
+                <h2>Инженерный расчет</h2>
+                <p>Запустите расчет для сохраненного элемента с учетом обследований, класса инженерной уверенности, режимов расчета и warning-флагов.</p>
               </div>
               <form id="calculationForm" class="inline-form">
                 <label>
-                  <span>Forecast Horizon, y</span>
+                  <span>Горизонт прогноза, лет</span>
                   <input name="forecast_horizon_years" type="number" step="0.1" value="15">
                 </label>
                 <label>
-                  <span>Time Step, y</span>
+                  <span>Шаг по времени, лет</span>
                   <input name="time_step_years" type="number" step="0.1" value="1">
                 </label>
-                <button type="submit">Run Analysis</button>
+                <button type="submit">Выполнить расчет</button>
               </form>
-              <div id="calculationSummary" class="summary-grid empty-block">Select an element and run a calculation.</div>
-              <div id="timelineChart" class="chart-shell empty-block">Timeline chart will appear here.</div>
-              <div id="scenarioTable" class="table-shell empty-block">Scenario comparison will appear here.</div>
+              <div id="calculationSummary" class="summary-grid empty-block">Выберите элемент и выполните расчет.</div>
+              <div id="timelineChart" class="chart-shell empty-block">Здесь появится график изменения показателей.</div>
+              <div id="scenarioTable" class="table-shell empty-block">Здесь появится сравнение сценариев.</div>
             </section>
 
             <section class="card">
               <div class="card-head">
                 <div class="card-head-copy">
-                  <h2>Report Export</h2>
-                  <p>Build a report preview, then generate DOCX, PDF, HTML, and Markdown artifacts from the stored analysis context.</p>
+                  <h2>Экспорт отчета</h2>
+                  <p>Сначала соберите предварительный просмотр, затем сформируйте DOCX, PDF, HTML и Markdown с разделом ограничений применимости и инженерных предупреждений.</p>
                 </div>
               </div>
               <form id="reportForm" class="form-grid">
                 <label>
-                  <span>Report Title</span>
-                  <input name="report_title" value="Residual life report">
+                  <span>Название отчета</span>
+                  <input name="report_title" value="Отчет по остаточному ресурсу">
                 </label>
                 <label>
-                  <span>Author</span>
-                  <input name="author" value="Engineering team">
+                  <span>Автор</span>
+                  <input name="author" value="Инженерная группа">
                 </label>
                 <label>
-                  <span>Forecast Horizon, y</span>
+                  <span>Горизонт прогноза, лет</span>
                   <input name="forecast_horizon_years" type="number" step="0.1" value="15">
                 </label>
                 <label>
-                  <span>Time Step, y</span>
+                  <span>Шаг по времени, лет</span>
                   <input name="time_step_years" type="number" step="0.1" value="1">
                 </label>
                 <div class="checkbox-row span-all">
@@ -338,41 +338,41 @@
                   <label><input type="checkbox" name="format_md"> Markdown</label>
                 </div>
                 <div class="form-actions span-all">
-                  <button type="button" class="ghost-button" id="previewReportBtn">Preview Report</button>
-                  <button type="submit">Generate Report</button>
+                  <button type="button" class="ghost-button" id="previewReportBtn">Предпросмотр отчета</button>
+                  <button type="submit">Сформировать отчет</button>
                 </div>
               </form>
-              <div id="reportPreview" class="preview-shell empty-block">Select an element to build a report preview.</div>
-              <div id="reportResults" class="stack-list empty-block">Generated reports will appear here.</div>
+              <div id="reportPreview" class="preview-shell empty-block">Выберите элемент для формирования предварительного просмотра отчета.</div>
+              <div id="reportResults" class="stack-list empty-block">Здесь появятся сформированные файлы отчета.</div>
             </section>
 
             <section class="card">
               <div class="card-head">
-                <h2>Bulk Import</h2>
-                <p>Load CSV or XLSX files instead of entering asset, element, and inspection cards by hand.</p>
+                <h2>Массовый импорт</h2>
+                <p>Загружайте CSV или XLSX вместо ручного ввода паспортов объектов, элементов и обследований.</p>
               </div>
               <form id="assetImportForm" class="upload-form">
                 <label>
-                  <span>Import Assets</span>
+                  <span>Импорт объектов</span>
                   <input type="file" name="file" accept=".csv,.xlsx" required>
                 </label>
-                <button type="submit">Upload Assets</button>
+                <button type="submit">Загрузить объекты</button>
               </form>
               <form id="elementImportForm" class="upload-form">
                 <label>
-                  <span>Import Elements for Selected Asset</span>
+                  <span>Импорт элементов для выбранного объекта</span>
                   <input type="file" name="file" accept=".csv,.xlsx" required>
                 </label>
-                <button type="submit">Upload Elements</button>
+                <button type="submit">Загрузить элементы</button>
               </form>
               <form id="inspectionImportForm" class="upload-form">
                 <label>
-                  <span>Import Inspections for Selected Element</span>
+                  <span>Импорт обследований для выбранного элемента</span>
                   <input type="file" name="file" accept=".csv,.xlsx" required>
                 </label>
-                <button type="submit">Upload Inspections</button>
+                <button type="submit">Загрузить обследования</button>
               </form>
-              <div id="importResults" class="stack-list empty-block">Import summaries will appear here.</div>
+              <div id="importResults" class="stack-list empty-block">Здесь появятся сводки по импорту.</div>
             </section>
           </div>
         </section>
@@ -382,24 +382,24 @@
     <template id="zoneRowTemplate">
       <div class="data-row">
         <input data-field="zone_id" placeholder="zone_id">
-        <input data-field="role" placeholder="role">
-        <input data-field="initial_thickness_mm" type="number" step="0.001" placeholder="thickness">
-        <input data-field="exposed_surfaces" type="number" step="1" placeholder="surfaces" value="1">
-        <input data-field="pitting_factor" type="number" step="0.001" placeholder="pitting" value="0">
-        <input data-field="pit_loss_mm" type="number" step="0.001" placeholder="pit loss" value="0">
-        <button type="button" class="remove-row">Remove</button>
+        <input data-field="role" placeholder="роль">
+        <input data-field="initial_thickness_mm" type="number" step="0.001" placeholder="толщина">
+        <input data-field="exposed_surfaces" type="number" step="1" placeholder="поверхности" value="1">
+        <input data-field="pitting_factor" type="number" step="0.001" placeholder="питтинг" value="0">
+        <input data-field="pit_loss_mm" type="number" step="0.001" placeholder="потеря от питтинга" value="0">
+        <button type="button" class="remove-row">Удалить</button>
       </div>
     </template>
 
     <template id="measurementRowTemplate">
       <div class="data-row">
         <input data-field="zone_id" placeholder="zone_id">
-        <input data-field="point_id" placeholder="point_id">
-        <input data-field="thickness_mm" type="number" step="0.001" placeholder="thickness">
-        <input data-field="error_mm" type="number" step="0.001" placeholder="error" value="0">
+        <input data-field="point_id" placeholder="точка">
+        <input data-field="thickness_mm" type="number" step="0.001" placeholder="толщина">
+        <input data-field="error_mm" type="number" step="0.001" placeholder="погрешность" value="0">
         <input data-field="measured_at" type="date">
-        <input data-field="quality" type="number" step="0.01" placeholder="quality" value="1">
-        <button type="button" class="remove-row">Remove</button>
+        <input data-field="quality" type="number" step="0.01" placeholder="качество" value="1">
+        <button type="button" class="remove-row">Удалить</button>
       </div>
     </template>
 

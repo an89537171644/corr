@@ -10,12 +10,14 @@ from ..domain import (
     CalculationScenarioInput,
     ForecastMode,
     InspectionRecord,
+    RateFitMode,
     ZoneDefinition,
     ZoneObservation,
     ZoneState,
 )
 from ..ml import DegradationFeatureVector, HybridRateEnsembleModel
 from .corrosion import MIN_THICKNESS_MM, LONG_TERM_THRESHOLD_YEARS, corrosion_loss
+from .rate_fit import infer_degradation_rate
 
 
 @dataclass
@@ -70,15 +72,22 @@ def build_zone_observations(
                     observed_rate_mm_per_year=None,
                     effective_rate_mm_per_year=baseline_zone_rate_value,
                     baseline_rate_mm_per_year=baseline_zone_rate_value,
+                    rate_lower_mm_per_year=baseline_zone_rate_value,
+                    rate_upper_mm_per_year=baseline_zone_rate_value,
+                    rate_fit_mode=RateFitMode.BASELINE_FALLBACK,
+                    rate_confidence=0.0,
+                    used_points_count=0,
                     latest_inspection_date=None,
                     measurement_count=0,
                     source="baseline_fallback",
+                    warnings=["История обследований отсутствует; использована baseline-модель."],
                 )
             )
             continue
 
         latest = zone_points[-1]
-        observed_rate = infer_observed_rate(zone_points)
+        rate_fit = infer_degradation_rate(zone_points, baseline_zone_rate_value)
+        observed_rate = rate_fit.v_mean
         features = DegradationFeatureVector(
             environment_category=environment_category,
             exposed_surfaces=zone.exposed_surfaces,
@@ -106,9 +115,15 @@ def build_zone_observations(
                 observed_rate_mm_per_year=observed_rate,
                 effective_rate_mm_per_year=effective_rate,
                 baseline_rate_mm_per_year=baseline_zone_rate_value,
+                rate_lower_mm_per_year=rate_fit.v_lower,
+                rate_upper_mm_per_year=rate_fit.v_upper,
+                rate_fit_mode=rate_fit.fit_mode,
+                rate_confidence=rate_fit.rate_confidence,
+                used_points_count=rate_fit.used_points_count,
                 latest_inspection_date=latest.performed_at,
                 measurement_count=sum(point.measurement_count for point in zone_points),
                 source=source,
+                warnings=rate_fit.warnings,
             )
         )
 
@@ -181,21 +196,6 @@ def measurement_to_mm(value: float, units: Optional[str]) -> float:
     if normalized == "m":
         return float(value) * 1000.0
     return float(value)
-
-
-def infer_observed_rate(points: Sequence[ZoneInspectionPoint]) -> float:
-    if not points:
-        return 0.0
-    if len(points) == 1:
-        point = points[0]
-        return max(0.0, point.observed_loss_mm / max(point.age_years, 1e-6))
-
-    previous = points[-2]
-    latest = points[-1]
-    delta_years = max(latest.age_years - previous.age_years, 1e-6)
-    return max(0.0, (latest.observed_loss_mm - previous.observed_loss_mm) / delta_years)
-
-
 def select_effective_rate(
     forecast_mode: ForecastMode,
     observed_rate: float,

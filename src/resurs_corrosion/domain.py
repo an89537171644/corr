@@ -27,6 +27,37 @@ class CheckType(str, Enum):
     AXIAL_TENSION = "axial_tension"
     AXIAL_COMPRESSION = "axial_compression"
     BENDING_MAJOR = "bending_major"
+    COMBINED_AXIAL_BENDING_BASIC = "combined_axial_bending_basic"
+
+
+class AxialForceKind(str, Enum):
+    TENSION = "tension"
+    COMPRESSION = "compression"
+
+
+class EngineeringConfidenceLevel(str, Enum):
+    A = "A"
+    B = "B"
+    C = "C"
+    D = "D"
+
+
+class ResistanceMode(str, Enum):
+    DIRECT = "direct"
+    APPROXIMATE = "approximate"
+    COMBINED_BASIC = "combined_basic"
+
+
+class ReducerMode(str, Enum):
+    DIRECT = "direct"
+    GENERIC_FALLBACK = "generic_fallback"
+
+
+class RateFitMode(str, Enum):
+    BASELINE_FALLBACK = "baseline_fallback"
+    SINGLE_OBSERVATION = "single_observation"
+    TWO_POINT = "two_point"
+    ROBUST_HISTORY_FIT = "robust_history_fit"
 
 
 class AssetPassport(BaseModel):
@@ -76,6 +107,7 @@ class ZoneDefinition(BaseModel):
 
 class SectionDefinition(BaseModel):
     section_type: SectionType
+    schema_version: str = "section.v1"
     reference_thickness_mm: Optional[float] = Field(default=None, gt=0)
 
     width_mm: Optional[float] = Field(default=None, gt=0)
@@ -134,6 +166,7 @@ class SectionDefinition(BaseModel):
 
 
 class MaterialInput(BaseModel):
+    schema_version: str = "material.v1"
     fy_mpa: float = Field(gt=0)
     gamma_m: float = Field(default=1.0, gt=0)
     stability_factor: float = Field(default=1.0, gt=0)
@@ -141,8 +174,26 @@ class MaterialInput(BaseModel):
 
 class ActionInput(BaseModel):
     check_type: CheckType
-    demand_value: float = Field(gt=0)
+    schema_version: str = "action.v1"
+    demand_value: Optional[float] = Field(default=None, gt=0)
+    axial_force_value: Optional[float] = Field(default=None, gt=0)
+    bending_moment_value: Optional[float] = Field(default=None, gt=0)
+    axial_force_kind: AxialForceKind = AxialForceKind.COMPRESSION
     demand_growth_factor_per_year: float = Field(default=0.0, ge=0.0)
+
+    @model_validator(mode="after")
+    def validate_action_payload(self) -> "ActionInput":
+        if self.check_type == CheckType.COMBINED_AXIAL_BENDING_BASIC:
+            if self.axial_force_value is None or self.bending_moment_value is None:
+                raise ValueError(
+                    "Combined axial-bending basic check requires both axial_force_value and bending_moment_value."
+                )
+            return self
+
+        if self.demand_value is None:
+            raise ValueError(f"Action check '{self.check_type.value}' requires demand_value.")
+
+        return self
 
 
 class CalculationScenarioInput(BaseModel):
@@ -186,9 +237,15 @@ class ZoneObservation(BaseModel):
     observed_rate_mm_per_year: Optional[float] = None
     effective_rate_mm_per_year: Optional[float] = None
     baseline_rate_mm_per_year: Optional[float] = None
+    rate_lower_mm_per_year: Optional[float] = None
+    rate_upper_mm_per_year: Optional[float] = None
+    rate_fit_mode: RateFitMode = RateFitMode.BASELINE_FALLBACK
+    rate_confidence: Optional[float] = None
+    used_points_count: int = 0
     latest_inspection_date: Optional[date] = None
     measurement_count: int = 0
     source: str
+    warnings: List[str] = Field(default_factory=list)
 
 
 class ZoneState(BaseModel):
@@ -227,6 +284,11 @@ class ScenarioResult(BaseModel):
     remaining_life_years: Optional[float] = None
     limit_state_reached_within_horizon: bool
     timeline: List[TimelinePoint]
+    engineering_confidence_level: EngineeringConfidenceLevel = EngineeringConfidenceLevel.D
+    resistance_mode: ResistanceMode = ResistanceMode.APPROXIMATE
+    reducer_mode: ReducerMode = ReducerMode.DIRECT
+    warnings: List[str] = Field(default_factory=list)
+    fallback_flags: List[str] = Field(default_factory=list)
     notes: Optional[str] = None
 
 
@@ -262,6 +324,15 @@ class CalculationResponse(BaseModel):
     dataset_version: DatasetVersionInfo
     results: List[ScenarioResult]
     risk_profile: RiskProfile
+    engineering_confidence_level: EngineeringConfidenceLevel = EngineeringConfidenceLevel.D
+    resistance_mode: ResistanceMode = ResistanceMode.APPROXIMATE
+    reducer_mode: ReducerMode = ReducerMode.DIRECT
+    rate_fit_mode: RateFitMode = RateFitMode.BASELINE_FALLBACK
+    ml_mode: str = "heuristic"
+    warnings: List[str] = Field(default_factory=list)
+    used_measurement_count: int = 0
+    used_inspection_count: int = 0
+    fallback_flags: List[str] = Field(default_factory=list)
 
 
 class AssetCreate(AssetPassport):

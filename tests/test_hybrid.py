@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from resurs_corrosion.domain import (
@@ -17,7 +19,7 @@ from resurs_corrosion.domain import (
     ZoneDefinition,
     ZoneState,
 )
-from resurs_corrosion.ml import build_default_hybrid_model
+from resurs_corrosion.ml import DegradationFeatureVector, build_default_hybrid_model
 from resurs_corrosion.services.degradation import build_zone_observations
 from resurs_corrosion.services.engine import run_calculation
 from resurs_corrosion.services.sections import build_effective_section
@@ -160,3 +162,89 @@ def test_build_effective_section_supports_angle_and_tube() -> None:
     assert tube_section.area_mm2 > 0
     assert tube_section.inertia_mm4 > 0
     assert tube_section.section_modulus_mm3 > 0
+
+
+def test_hybrid_model_training_interface_preserves_fit_save_and_load(tmp_path: Path) -> None:
+    dataset = [
+        {
+            "dataset_kind": "synthetic",
+            "dataset_version": "synthetic-v1",
+            "environment_category": "C3",
+            "exposed_surfaces": 1,
+            "pitting_factor": 0.02,
+            "pit_loss_mm": 0.1,
+            "inspection_count": 1,
+            "latest_quality": 0.9,
+            "observed_rate_mm_per_year": 0.10,
+            "baseline_rate_mm_per_year": 0.09,
+            "target_rate_factor": 1.05,
+        },
+        {
+            "dataset_kind": "synthetic",
+            "dataset_version": "synthetic-v1",
+            "environment_category": "C4",
+            "exposed_surfaces": 2,
+            "pitting_factor": 0.08,
+            "pit_loss_mm": 0.2,
+            "inspection_count": 2,
+            "latest_quality": 0.94,
+            "observed_rate_mm_per_year": 0.18,
+            "baseline_rate_mm_per_year": 0.12,
+            "target_rate_factor": 1.25,
+        },
+        {
+            "dataset_kind": "archived",
+            "dataset_version": "archived-v1",
+            "environment_category": "C5",
+            "exposed_surfaces": 2,
+            "pitting_factor": 0.14,
+            "pit_loss_mm": 0.3,
+            "inspection_count": 3,
+            "latest_quality": 0.96,
+            "observed_rate_mm_per_year": 0.24,
+            "baseline_rate_mm_per_year": 0.15,
+            "target_rate_factor": 1.45,
+        },
+        {
+            "dataset_kind": "real",
+            "dataset_version": "real-v1",
+            "environment_category": "C4",
+            "exposed_surfaces": 1,
+            "pitting_factor": 0.05,
+            "pit_loss_mm": 0.1,
+            "inspection_count": 4,
+            "latest_quality": 0.98,
+            "observed_rate_mm_per_year": 0.13,
+            "baseline_rate_mm_per_year": 0.11,
+            "target_rate_factor": 1.12,
+        },
+    ]
+
+    model = build_default_hybrid_model(dataset)
+    info = model.model_info()
+
+    assert model.fitted is True
+    assert info["accepted_row_count"] == 4
+    assert info["execution_mode"] in {"trained", "fallback"}
+    assert isinstance(
+        model.predict_rate_factor(
+            DegradationFeatureVector(
+                environment_category="C4",
+                exposed_surfaces=2,
+                pitting_factor=0.1,
+                pit_loss_mm=0.2,
+                inspection_count=2,
+                latest_quality=0.95,
+                observed_rate_mm_per_year=0.16,
+                baseline_rate_mm_per_year=0.12,
+            )
+        ),
+        float,
+    )
+
+    model_path = tmp_path / "hybrid-model.bin"
+    model.save_model(model_path)
+    loaded = type(model).load_model(model_path)
+
+    assert loaded.fitted is True
+    assert loaded.model_info()["execution_mode"] == info["execution_mode"]

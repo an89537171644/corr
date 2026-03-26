@@ -20,13 +20,20 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from .. import __version__
 from ..domain import (
     AnalysisRunRead,
+    AxialForceKind,
     BaselineReportRequest,
     BaselineStoredElementRequest,
     CalculationRequest,
     CalculationResponse,
+    CheckType,
+    EngineeringConfidenceLevel,
+    ForecastMode,
+    RateFitMode,
+    ReducerMode,
     ReportArtifact,
     ReportBundle,
     ReportFormat,
+    ResistanceMode,
 )
 from ..models import ElementModel
 from ..storage import build_calculation_request
@@ -174,14 +181,14 @@ def write_report_file(context: ReportContext, report_format: ReportFormat, file_
 
 
 def default_report_title(element_code: str) -> str:
-    return f"Residual life report for {element_code}"
+    return f"Отчет по остаточному ресурсу для {element_code}"
 
 
 def build_report_stem(report_title: str, reference_id: int, generated_at: datetime) -> str:
     normalized = unicodedata.normalize("NFKD", report_title).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^A-Za-z0-9]+", "-", normalized).strip("-").lower()
     if not slug:
-        slug = "residual-life-report"
+        slug = "otchet-po-ostatochnomu-resursu"
     timestamp = generated_at.strftime("%Y%m%d-%H%M%S")
     return f"{slug}-{reference_id}-{timestamp}"
 
@@ -189,46 +196,50 @@ def build_report_stem(report_title: str, reference_id: int, generated_at: dateti
 def write_docx_report(context: ReportContext, file_path: Path) -> None:
     document = Document()
     document.add_heading(context.title, 0)
-    document.add_paragraph(f"Generated: {format_datetime(context.generated_at)}")
+    document.add_paragraph(f"Сформирован: {format_datetime(context.generated_at)}")
     if context.author:
-        document.add_paragraph(f"Prepared by: {context.author}")
+        document.add_paragraph(f"Подготовил: {context.author}")
 
     add_docx_paragraph(document, build_scope_line(context))
     add_docx_paragraph(document, build_model_line(context))
 
-    document.add_heading("Object and element identification", level=1)
-    add_docx_table(document, ["Field", "Value"], build_identification_rows(context))
+    document.add_heading("Идентификация объекта и элемента", level=1)
+    add_docx_table(document, ["Поле", "Значение"], build_identification_rows(context))
 
-    document.add_heading("Input data and observations", level=1)
-    add_docx_table(document, ["Field", "Value"], build_input_rows(context))
-    add_docx_table(document, ["Inspection field", "Value"], build_inspection_rows(context))
+    document.add_heading("Исходные данные и наблюдения", level=1)
+    add_docx_table(document, ["Поле", "Значение"], build_input_rows(context))
+    add_docx_table(document, ["Параметр обследования", "Значение"], build_inspection_rows(context))
     add_docx_table(
         document,
-        ["Zone", "Point", "Thickness, mm", "Error, mm", "Quality", "Comment"],
+        ["Зона", "Точка", "Толщина, мм", "Погрешность, мм", "Качество", "Комментарий"],
         build_measurement_rows(context),
     )
 
-    document.add_heading("Model and coefficients", level=1)
-    add_docx_table(document, ["Parameter", "Value"], build_model_rows(context))
+    document.add_heading("Модель и коэффициенты", level=1)
+    add_docx_table(document, ["Параметр", "Значение"], build_model_rows(context))
 
-    document.add_heading("Current zone state", level=1)
+    document.add_heading("Текущее состояние зон", level=1)
     add_docx_table(
         document,
-        ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+        ["Зона", "Роль", "Наблюдаемая потеря, мм", "Прогнозная потеря, мм", "Скорость прогноза, мм/год", "Режим", "Эффективная толщина, мм"],
         build_zone_rows(context),
     )
 
-    document.add_heading("Scenario comparison", level=1)
+    document.add_heading("Сравнение сценариев", level=1)
     add_docx_table(
         document,
-        ["Scenario", "Resistance", "Demand", "Margin", "Remaining life, y", "Limit state"],
+        ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
         build_scenario_rows(context),
     )
 
-    document.add_heading("Timeline snapshot", level=1)
-    add_docx_table(document, ["Age, y", "Resistance", "Demand", "Margin"], build_timeline_rows(context))
+    document.add_heading("Фрагмент временной диаграммы", level=1)
+    add_docx_table(document, ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context))
 
-    document.add_heading("Recommendation", level=1)
+    document.add_heading("Ограничения применимости", level=1)
+    for line in build_limitation_lines(context):
+        add_docx_paragraph(document, line)
+
+    document.add_heading("Рекомендации", level=1)
     for line in build_recommendation_lines(context):
         add_docx_paragraph(document, line)
 
@@ -242,44 +253,45 @@ def write_pdf_report(context: ReportContext, file_path: Path) -> None:
 
     story.append(Paragraph(escape(context.title), styles["title"]))
     story.append(Spacer(1, 4 * mm))
-    story.append(Paragraph(escape(f"Generated: {format_datetime(context.generated_at)}"), styles["body"]))
+    story.append(Paragraph(escape(f"Сформирован: {format_datetime(context.generated_at)}"), styles["body"]))
     if context.author:
-        story.append(Paragraph(escape(f"Prepared by: {context.author}"), styles["body"]))
+        story.append(Paragraph(escape(f"Подготовил: {context.author}"), styles["body"]))
     story.append(Paragraph(escape(build_scope_line(context)), styles["body"]))
     story.append(Paragraph(escape(build_model_line(context)), styles["body"]))
     story.append(Spacer(1, 4 * mm))
 
-    story.extend(build_pdf_section("Object and element identification", ["Field", "Value"], build_identification_rows(context), styles))
-    story.extend(build_pdf_section("Input data and observations", ["Field", "Value"], build_input_rows(context), styles))
-    story.extend(build_pdf_section("Inspection summary", ["Inspection field", "Value"], build_inspection_rows(context), styles))
+    story.extend(build_pdf_section("Идентификация объекта и элемента", ["Поле", "Значение"], build_identification_rows(context), styles))
+    story.extend(build_pdf_section("Исходные данные и наблюдения", ["Поле", "Значение"], build_input_rows(context), styles))
+    story.extend(build_pdf_section("Сводка по обследованию", ["Параметр обследования", "Значение"], build_inspection_rows(context), styles))
     story.extend(
         build_pdf_section(
-            "Measurements",
-            ["Zone", "Point", "Thickness, mm", "Error, mm", "Quality", "Comment"],
+            "Замеры",
+            ["Зона", "Точка", "Толщина, мм", "Погрешность, мм", "Качество", "Комментарий"],
             build_measurement_rows(context),
             styles,
         )
     )
-    story.extend(build_pdf_section("Model and coefficients", ["Parameter", "Value"], build_model_rows(context), styles))
+    story.extend(build_pdf_section("Модель и коэффициенты", ["Параметр", "Значение"], build_model_rows(context), styles))
     story.extend(
         build_pdf_section(
-            "Current zone state",
-            ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+            "Текущее состояние зон",
+            ["Зона", "Роль", "Наблюдаемая потеря, мм", "Прогнозная потеря, мм", "Скорость прогноза, мм/год", "Режим", "Эффективная толщина, мм"],
             build_zone_rows(context),
             styles,
         )
     )
     story.extend(
         build_pdf_section(
-            "Scenario comparison",
-            ["Scenario", "Resistance", "Demand", "Margin", "Remaining life, y", "Limit state"],
+            "Сравнение сценариев",
+            ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
             build_scenario_rows(context),
             styles,
         )
     )
-    story.extend(build_pdf_section("Timeline snapshot", ["Age, y", "Resistance", "Demand", "Margin"], build_timeline_rows(context), styles))
+    story.extend(build_pdf_section("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context), styles))
+    story.extend(build_pdf_list_section("Ограничения применимости", build_limitation_lines(context), styles))
 
-    story.append(Paragraph("Recommendation", styles["heading"]))
+    story.append(Paragraph("Рекомендации", styles["heading"]))
     for line in build_recommendation_lines(context):
         story.append(Paragraph(escape(line), styles["body"]))
 
@@ -306,53 +318,61 @@ def build_markdown_report(context: ReportContext) -> str:
     lines = [
         f"# {context.title}",
         "",
-        f"- Generated: {format_datetime(context.generated_at)}",
+        f"- Сформирован: {format_datetime(context.generated_at)}",
     ]
     if context.author:
-        lines.append(f"- Prepared by: {context.author}")
+        lines.append(f"- Подготовил: {context.author}")
     lines.extend(
         [
-            f"- Scope: {build_scope_line(context)}",
-            f"- Model: {build_model_line(context)}",
+            f"- Область оценки: {build_scope_line(context)}",
+            f"- Расчетная схема: {build_model_line(context)}",
             "",
-            "## Object and element identification",
+            "## Идентификация объекта и элемента",
             "",
-            render_markdown_table(["Field", "Value"], build_identification_rows(context)),
+            render_markdown_table(["Поле", "Значение"], build_identification_rows(context)),
             "",
-            "## Input data and observations",
+            "## Исходные данные и наблюдения",
             "",
-            render_markdown_table(["Field", "Value"], build_input_rows(context)),
+            render_markdown_table(["Поле", "Значение"], build_input_rows(context)),
             "",
-            render_markdown_table(["Inspection field", "Value"], build_inspection_rows(context)),
+            render_markdown_table(["Параметр обследования", "Значение"], build_inspection_rows(context)),
             "",
             render_markdown_table(
-                ["Zone", "Point", "Thickness, mm", "Error, mm", "Quality", "Comment"],
+                ["Зона", "Точка", "Толщина, мм", "Погрешность, мм", "Качество", "Комментарий"],
                 build_measurement_rows(context),
             ),
             "",
-            "## Model and coefficients",
+            "## Модель и коэффициенты",
             "",
-            render_markdown_table(["Parameter", "Value"], build_model_rows(context)),
+            render_markdown_table(["Параметр", "Значение"], build_model_rows(context)),
             "",
-            "## Current zone state",
+            "## Текущее состояние зон",
             "",
             render_markdown_table(
-                ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+                ["Зона", "Роль", "Наблюдаемая потеря, мм", "Прогнозная потеря, мм", "Скорость прогноза, мм/год", "Режим", "Эффективная толщина, мм"],
                 build_zone_rows(context),
             ),
             "",
-            "## Scenario comparison",
+            "## Сравнение сценариев",
             "",
             render_markdown_table(
-                ["Scenario", "Resistance", "Demand", "Margin", "Remaining life, y", "Limit state"],
+                ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
                 build_scenario_rows(context),
             ),
             "",
-            "## Timeline snapshot",
+            "## Фрагмент временной диаграммы",
             "",
-            render_markdown_table(["Age, y", "Resistance", "Demand", "Margin"], build_timeline_rows(context)),
+            render_markdown_table(["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context)),
             "",
-            "## Recommendation",
+            "## Ограничения применимости",
+            "",
+        ]
+    )
+    lines.extend([f"- {line}" for line in build_limitation_lines(context)])
+    lines.extend(
+        [
+            "",
+            "## Рекомендации",
             "",
         ]
     )
@@ -363,31 +383,31 @@ def build_markdown_report(context: ReportContext) -> str:
 
 def build_html_report(context: ReportContext) -> str:
     sections = [
-        ("Object and element identification", ["Field", "Value"], build_identification_rows(context)),
-        ("Input data and observations", ["Field", "Value"], build_input_rows(context)),
-        ("Inspection summary", ["Inspection field", "Value"], build_inspection_rows(context)),
+        ("Идентификация объекта и элемента", ["Поле", "Значение"], build_identification_rows(context)),
+        ("Исходные данные и наблюдения", ["Поле", "Значение"], build_input_rows(context)),
+        ("Сводка по обследованию", ["Параметр обследования", "Значение"], build_inspection_rows(context)),
         (
-            "Measurements",
-            ["Zone", "Point", "Thickness, mm", "Error, mm", "Quality", "Comment"],
+            "Замеры",
+            ["Зона", "Точка", "Толщина, мм", "Погрешность, мм", "Качество", "Комментарий"],
             build_measurement_rows(context),
         ),
-        ("Model and coefficients", ["Parameter", "Value"], build_model_rows(context)),
+        ("Модель и коэффициенты", ["Параметр", "Значение"], build_model_rows(context)),
         (
-            "Current zone state",
-            ["Zone", "Role", "Observed loss, mm", "Forecast loss, mm", "Forecast rate, mm/y", "Mode", "Effective thickness, mm"],
+            "Текущее состояние зон",
+            ["Зона", "Роль", "Наблюдаемая потеря, мм", "Прогнозная потеря, мм", "Скорость прогноза, мм/год", "Режим", "Эффективная толщина, мм"],
             build_zone_rows(context),
         ),
         (
-            "Scenario comparison",
-            ["Scenario", "Resistance", "Demand", "Margin", "Remaining life, y", "Limit state"],
+            "Сравнение сценариев",
+            ["Сценарий", "Несущая способность", "Воздействие", "Запас", "Остаточный ресурс, лет", "Предельное состояние"],
             build_scenario_rows(context),
         ),
-        ("Timeline snapshot", ["Age, y", "Resistance", "Demand", "Margin"], build_timeline_rows(context)),
+        ("Фрагмент временной диаграммы", ["Возраст, лет", "Несущая способность", "Воздействие", "Запас"], build_timeline_rows(context)),
     ]
 
     body = [
         "<!doctype html>",
-        "<html lang=\"en\">",
+        "<html lang=\"ru\">",
         "<head>",
         "  <meta charset=\"utf-8\">",
         f"  <title>{escape(context.title)}</title>",
@@ -405,20 +425,24 @@ def build_html_report(context: ReportContext) -> str:
         "<body>",
         "  <main>",
         f"    <h1>{escape(context.title)}</h1>",
-        f"    <p class=\"meta\">Generated: {escape(format_datetime(context.generated_at))}</p>",
+        f"    <p class=\"meta\">Сформирован: {escape(format_datetime(context.generated_at))}</p>",
     ]
     if context.author:
-        body.append(f"    <p class=\"meta\">Prepared by: {escape(context.author)}</p>")
+        body.append(f"    <p class=\"meta\">Подготовил: {escape(context.author)}</p>")
     body.extend(
         [
-            f"    <p class=\"meta\">Scope: {escape(build_scope_line(context))}</p>",
-            f"    <p class=\"meta\">Model: {escape(build_model_line(context))}</p>",
+            f"    <p class=\"meta\">Область оценки: {escape(build_scope_line(context))}</p>",
+            f"    <p class=\"meta\">Расчетная схема: {escape(build_model_line(context))}</p>",
         ]
     )
     for title, headers, rows in sections:
         body.append(f"    <h2>{escape(title)}</h2>")
         body.append(render_html_table(headers, rows))
-    body.append("    <h2>Recommendation</h2>")
+    body.append("    <h2>Ограничения применимости</h2>")
+    body.append("    <ul>")
+    body.extend([f"      <li>{escape(line)}</li>" for line in build_limitation_lines(context)])
+    body.append("    </ul>")
+    body.append("    <h2>Рекомендации</h2>")
     body.append("    <ul>")
     body.extend([f"      <li>{escape(line)}</li>" for line in build_recommendation_lines(context)])
     body.extend(
@@ -435,71 +459,70 @@ def build_html_report(context: ReportContext) -> str:
 def build_scope_line(context: ReportContext) -> str:
     request = context.calculation_request
     return (
-        f"Object: {request.asset.name}; element: {request.element.element_id}; "
-        f"type: {request.element.element_type}; environment: {request.environment_category.value}."
+        f"Объект: {request.asset.name}; элемент: {request.element.element_id}; "
+        f"тип: {request.element.element_type}; среда: {request.environment_category.value}."
     )
 
 
 def build_model_line(context: ReportContext) -> str:
     return (
-        "Report generated from the engineering chain "
-        "delta_obs -> v_z -> forecast loss -> t_eff -> effective section -> resistance -> remaining life, "
-        "with the classical atmospheric law preserved as baseline and fallback."
+        "Отчет сформирован по инженерной цепочке "
+        "delta_obs -> v_z -> прогноз потери -> t_eff -> эффективное сечение -> несущая способность -> остаточный ресурс, "
+        "при сохранении классического атмосферного закона как базовой и резервной модели."
     )
 
 
 def build_identification_rows(context: ReportContext) -> List[List[str]]:
     request = context.calculation_request
     return [
-        ["Asset ID", str(context.asset_id or "-")],
-        ["Asset name", request.asset.name],
-        ["Address", request.asset.address or "-"],
-        ["Commissioned year", str(request.asset.commissioned_year or "-")],
-        ["Purpose", request.asset.purpose or "-"],
-        ["Responsibility class", request.asset.responsibility_class or "-"],
-        ["Element DB ID", str(context.element_db_id or "-")],
-        ["Element code", request.element.element_id],
-        ["Element type", request.element.element_type],
-        ["Steel grade", request.element.steel_grade or "-"],
-        ["Work scheme", request.element.work_scheme or "-"],
-        ["Operating zone", request.element.operating_zone or "-"],
-        ["Analysis ID", str(context.analysis_id or "-")],
+        ["ID объекта", str(context.asset_id or "-")],
+        ["Наименование объекта", request.asset.name],
+        ["Адрес", request.asset.address or "-"],
+        ["Год ввода в эксплуатацию", str(request.asset.commissioned_year or "-")],
+        ["Назначение", request.asset.purpose or "-"],
+        ["Класс ответственности", request.asset.responsibility_class or "-"],
+        ["ID элемента в БД", str(context.element_db_id or "-")],
+        ["Код элемента", request.element.element_id],
+        ["Тип элемента", request.element.element_type],
+        ["Марка стали", request.element.steel_grade or "-"],
+        ["Расчетная схема", request.element.work_scheme or "-"],
+        ["Зона эксплуатации", request.element.operating_zone or "-"],
+        ["ID расчета", str(context.analysis_id or "-")],
     ]
 
 
 def build_input_rows(context: ReportContext) -> List[List[str]]:
     request = context.calculation_request
-    return [
-        ["Environment category", request.environment_category.value],
-        ["Forecast mode", context.calculation_response.forecast_mode.value],
-        ["Current service life, years", format_number(request.current_service_life_years, 2)],
-        ["Forecast horizon, years", format_number(request.forecast_horizon_years, 2)],
-        ["Time step, years", format_number(request.time_step_years, 2)],
-        ["Section type", request.section.section_type.value],
-        ["Yield strength fy, MPa", format_number(request.material.fy_mpa, 2)],
+    rows = [
+        ["Категория среды", request.environment_category.value],
+        ["Режим прогноза", translate_forecast_mode(context.calculation_response.forecast_mode)],
+        ["Текущий срок службы, лет", format_number(request.current_service_life_years, 2)],
+        ["Горизонт прогноза, лет", format_number(request.forecast_horizon_years, 2)],
+        ["Шаг по времени, лет", format_number(request.time_step_years, 2)],
+        ["Тип сечения", request.section.section_type.value],
+        ["Предел текучести fy, МПа", format_number(request.material.fy_mpa, 2)],
         ["Gamma_m", format_number(request.material.gamma_m, 3)],
-        ["Stability factor", format_number(request.material.stability_factor, 3)],
-        ["Check type", request.action.check_type.value],
-        ["Demand value", format_number(request.action.demand_value, 3)],
-        ["Demand growth factor per year", format_number(request.action.demand_growth_factor_per_year, 4)],
-        ["Zone count", str(len(request.zones))],
-        ["Inspection count", str(len(request.inspections))],
+        ["Коэффициент устойчивости", format_number(request.material.stability_factor, 3)],
+        ["Количество зон", str(len(request.zones))],
+        ["Количество обследований", str(len(request.inspections))],
     ]
+    rows[9:9] = build_action_rows(request)
+    return rows
 
 
 def build_inspection_rows(context: ReportContext) -> List[List[str]]:
     inspections = sorted(context.calculation_request.inspections, key=lambda item: item.performed_at, reverse=True)
     if not inspections:
-        return [["Status", "No inspections registered."]]
+        return [["Статус", "Обследования отсутствуют."]]
 
     latest = inspections[0]
     return [
-        ["Inspection count", str(len(inspections))],
-        ["Latest inspection code", latest.inspection_id],
-        ["Latest inspection date", latest.performed_at.isoformat()],
-        ["Latest method", latest.method],
-        ["Latest executor", latest.executor or "-"],
-        ["Latest findings", latest.findings or "-"],
+        ["Количество обследований", str(len(inspections))],
+        ["Код последнего обследования", latest.inspection_id],
+        ["Дата последнего обследования", latest.performed_at.isoformat()],
+        ["Метод последнего обследования", latest.method],
+        ["Исполнитель", latest.executor or "-"],
+        ["Основные выводы", latest.findings or "-"],
     ]
 
 
@@ -525,19 +548,27 @@ def build_measurement_rows(context: ReportContext) -> List[List[str]]:
 
 
 def build_model_rows(context: ReportContext) -> List[List[str]]:
-    coefficients = context.calculation_response.environment_coefficients
+    response = context.calculation_response
+    coefficients = response.environment_coefficients
     return [
-        ["Environment coefficient k, mm", format_number(coefficients["k_mm"], 4)],
-        ["Time exponent b", format_number(coefficients["b"], 4)],
-        ["Conservative exponent b", format_number(coefficients["b_conservative"], 4)],
-        ["Forecast mode", context.calculation_response.forecast_mode.value],
-        ["ML model", context.calculation_response.ml_model_version.name],
-        ["ML model version", context.calculation_response.ml_model_version.version],
-        ["ML model note", context.calculation_response.ml_model_version.notes or "-"],
-        ["Dataset version", context.calculation_response.dataset_version.code],
-        ["Dataset source", context.calculation_response.dataset_version.source],
-        ["Scenario count", str(len(context.calculation_response.results))],
-        ["Risk exceedance share", format_number(context.calculation_response.risk_profile.exceedance_share, 3)],
+        ["Коэффициент среды k, мм", format_number(coefficients["k_mm"], 4)],
+        ["Показатель времени b", format_number(coefficients["b"], 4)],
+        ["Консервативный показатель b", format_number(coefficients["b_conservative"], 4)],
+        ["Режим прогноза", translate_forecast_mode(response.forecast_mode)],
+        ["Класс инженерной уверенности", translate_confidence_level(response.engineering_confidence_level)],
+        ["Режим редьюсера", translate_reducer_mode(response.reducer_mode)],
+        ["Режим сопротивления", translate_resistance_mode(response.resistance_mode)],
+        ["Режим аппроксимации скорости", translate_rate_fit_mode(response.rate_fit_mode)],
+        ["Режим ML-контура", translate_ml_mode(response.ml_mode)],
+        ["Использовано обследований", str(response.used_inspection_count)],
+        ["Использовано замеров", str(response.used_measurement_count)],
+        ["ML-модель", response.ml_model_version.name],
+        ["Версия ML-модели", response.ml_model_version.version],
+        ["Примечание по ML-модели", response.ml_model_version.notes or "-"],
+        ["Версия набора данных", response.dataset_version.code],
+        ["Источник данных", response.dataset_version.source],
+        ["Количество сценариев", str(len(response.results))],
+        ["Доля превышений", format_number(response.risk_profile.exceedance_share, 3)],
     ]
 
 
@@ -567,7 +598,7 @@ def build_scenario_rows(context: ReportContext) -> List[List[str]]:
                 f"{format_number(result.demand_value, 3)} {result.demand_unit}",
                 format_number(result.margin_value, 3),
                 format_optional_number(result.remaining_life_years, 2),
-                "Reached" if result.limit_state_reached_within_horizon else "Not reached",
+                "Достигнуто" if result.limit_state_reached_within_horizon else "Не достигнуто",
             ]
         )
     return rows
@@ -590,10 +621,75 @@ def build_timeline_rows(context: ReportContext) -> List[List[str]]:
 def build_recommendation_lines(context: ReportContext) -> List[str]:
     return [
         context.calculation_response.risk_profile.recommended_action,
-        f"Recommended next inspection within {format_number(context.calculation_response.risk_profile.next_inspection_within_years, 2)} years.",
+        f"Рекомендуемый срок до следующего обследования: {format_number(context.calculation_response.risk_profile.next_inspection_within_years, 2)} лет.",
         context.calculation_response.risk_profile.method_note,
-        f"Calculation engine version: {__version__}",
+        f"Версия расчетного ядра: {__version__}",
     ]
+
+
+def build_limitation_lines(context: ReportContext) -> List[str]:
+    response = context.calculation_response
+    lines: List[str] = []
+
+    if response.reducer_mode == ReducerMode.GENERIC_FALLBACK:
+        lines.append(
+            "Для эффективного сечения использован режим generic_reduced. "
+            "Это консервативное приближение по исходным пользовательским характеристикам, а не прямой reducer нормативного профиля."
+        )
+
+    if response.resistance_mode == ResistanceMode.APPROXIMATE:
+        lines.append(
+            "Несущая способность определялась в приближенном режиме. "
+            "Для данного случая задействована укрупненная проверка сжатия через коэффициент устойчивости."
+        )
+    elif response.resistance_mode == ResistanceMode.COMBINED_BASIC:
+        lines.append(
+            "Несущая способность определялась в режиме combined_basic. "
+            "Использовано базовое интеракционное соотношение N/Nrd + M/Mrd <= 1.0, а не полный нормативный расчет по СП 16."
+        )
+
+    if response.rate_fit_mode == RateFitMode.BASELINE_FALLBACK:
+        lines.append(
+            "История обследований недостаточна для идентификации наблюдаемой скорости деградации; "
+            "прогноз продолжен по baseline-модели атмосферной коррозии."
+        )
+    elif response.rate_fit_mode == RateFitMode.SINGLE_OBSERVATION:
+        lines.append(
+            "Скорость деградации оценена по одному обследованию. "
+            "Такая оценка пригодна как инженерный индикатор, но имеет повышенную неопределенность."
+        )
+    elif response.rate_fit_mode == RateFitMode.TWO_POINT:
+        lines.append(
+            "Скорость деградации оценена по двум точкам истории обследований. "
+            "Тренд является приближенным и чувствителен к качеству замеров."
+        )
+
+    if response.ml_mode == "heuristic":
+        lines.append(
+            "Гибридный ML-контур отработал в эвристическом режиме. "
+            "Он используется только для корректировки скорости деградации и не заменяет инженерный расчет сопротивления."
+        )
+    elif response.ml_mode == "fallback":
+        lines.append(
+            "Табличные ML-кандидаты недоступны или не обучены; использован детерминированный fallback-контур."
+        )
+
+    if response.engineering_confidence_level in (EngineeringConfidenceLevel.C, EngineeringConfidenceLevel.D):
+        lines.append(
+            f"Итоговый класс инженерной уверенности: {translate_confidence_level(response.engineering_confidence_level)}."
+        )
+
+    lines.append(response.risk_profile.method_note)
+    lines.extend([f"Предупреждение: {warning}" for warning in response.warnings])
+    lines.extend([f"Флаг fallback: {translate_fallback_flag(flag)}" for flag in response.fallback_flags])
+
+    if not lines:
+        lines.append(
+            "Существенные fallback-режимы и укрупняющие допущения для текущего расчета не зафиксированы; "
+            "расчет выполнен в прямом инженерном режиме в рамках реализованной модели."
+        )
+
+    return unique_lines(lines)
 
 
 def sample_timeline(timeline: Sequence, max_rows: int) -> Sequence:
@@ -719,6 +815,14 @@ def build_pdf_section(title: str, headers: Sequence[str], rows: Sequence[Sequenc
     return [Paragraph(title, styles["heading"]), table, Spacer(1, 4 * mm)]
 
 
+def build_pdf_list_section(title: str, lines: Sequence[str], styles: dict) -> List:
+    content: List = [Paragraph(title, styles["heading"])]
+    for line in lines:
+        content.append(Paragraph(escape(f"• {line}"), styles["body"]))
+    content.append(Spacer(1, 4 * mm))
+    return content
+
+
 def render_markdown_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> str:
     header_line = "| " + " | ".join(escape_markdown_cell(value) for value in headers) + " |"
     separator_line = "| " + " | ".join(["---"] * len(headers)) + " |"
@@ -757,3 +861,117 @@ def format_optional_number(value: Optional[float], digits: int) -> str:
     if value is None:
         return "-"
     return format_number(value, digits)
+
+
+def build_action_rows(request: CalculationRequest) -> List[List[str]]:
+    rows = [["Тип проверки", translate_check_type(request.action.check_type)]]
+    if request.action.check_type == CheckType.COMBINED_AXIAL_BENDING_BASIC:
+        rows.extend(
+            [
+                ["Тип продольной силы", translate_axial_force_kind(request.action.axial_force_kind)],
+                ["Продольная сила", format_optional_number(request.action.axial_force_value, 3)],
+                ["Изгибающий момент", format_optional_number(request.action.bending_moment_value, 3)],
+            ]
+        )
+    else:
+        rows.append(["Расчетное воздействие", format_optional_number(request.action.demand_value, 3)])
+    rows.append(["Рост воздействия в год", format_number(request.action.demand_growth_factor_per_year, 4)])
+    return rows
+
+
+def translate_check_type(check_type: CheckType) -> str:
+    mapping = {
+        CheckType.AXIAL_TENSION: "axial_tension - растяжение",
+        CheckType.AXIAL_COMPRESSION: "axial_compression - сжатие",
+        CheckType.BENDING_MAJOR: "bending_major - изгиб по главной оси",
+        CheckType.COMBINED_AXIAL_BENDING_BASIC: "combined_axial_bending_basic - базовая комбинированная проверка",
+    }
+    return mapping[check_type]
+
+
+def translate_axial_force_kind(kind: AxialForceKind) -> str:
+    mapping = {
+        AxialForceKind.TENSION: "tension - растяжение",
+        AxialForceKind.COMPRESSION: "compression - сжатие",
+    }
+    return mapping[kind]
+
+
+def translate_forecast_mode(mode: ForecastMode) -> str:
+    mapping = {
+        ForecastMode.BASELINE: "baseline - классическая атмосферная модель",
+        ForecastMode.OBSERVED: "observed - прогноз по наблюдаемой скорости",
+        ForecastMode.HYBRID: "hybrid - наблюдения + коррекция baseline",
+    }
+    return mapping[mode]
+
+
+def translate_confidence_level(level: EngineeringConfidenceLevel) -> str:
+    mapping = {
+        EngineeringConfidenceLevel.A: "A - прямой reducer и прямой расчет сопротивления",
+        EngineeringConfidenceLevel.B: "B - прямой reducer и приближенная инженерная проверка",
+        EngineeringConfidenceLevel.C: "C - fallback-допущения по сечению или режиму расчета",
+        EngineeringConfidenceLevel.D: "D - неполные данные или исследовательский режим",
+    }
+    return mapping[level]
+
+
+def translate_resistance_mode(mode: ResistanceMode | str) -> str:
+    normalized = mode.value if isinstance(mode, ResistanceMode) else str(mode)
+    mapping = {
+        ResistanceMode.DIRECT.value: "direct - прямая инженерная проверка",
+        ResistanceMode.APPROXIMATE.value: "approximate - приближенная инженерная проверка",
+        ResistanceMode.COMBINED_BASIC.value: "combined_basic - базовая комбинированная проверка",
+    }
+    return mapping.get(normalized, normalized)
+
+
+def translate_reducer_mode(mode: ReducerMode | str) -> str:
+    normalized = mode.value if isinstance(mode, ReducerMode) else str(mode)
+    mapping = {
+        ReducerMode.DIRECT.value: "direct - прямой редьюсер профиля",
+        ReducerMode.GENERIC_FALLBACK.value: "generic_fallback - fallback через generic_reduced",
+    }
+    return mapping.get(normalized, normalized)
+
+
+def translate_rate_fit_mode(mode: RateFitMode | str) -> str:
+    normalized = mode.value if isinstance(mode, RateFitMode) else str(mode)
+    mapping = {
+        RateFitMode.BASELINE_FALLBACK.value: "baseline_fallback - без истории обследований",
+        RateFitMode.SINGLE_OBSERVATION.value: "single_observation - одно обследование",
+        RateFitMode.TWO_POINT.value: "two_point - две точки истории",
+        RateFitMode.ROBUST_HISTORY_FIT.value: "robust_history_fit - робастная аппроксимация истории 3+ точек",
+    }
+    return mapping.get(normalized, normalized)
+
+
+def translate_ml_mode(mode: str) -> str:
+    mapping = {
+        "heuristic": "heuristic - эвристическая корректировка скорости",
+        "trained": "trained - обученный ансамбль кандидатов с резервным якорем",
+        "fallback": "fallback - детерминированный резерв без табличных кандидатов",
+    }
+    return mapping.get(str(mode), str(mode))
+
+
+def translate_fallback_flag(flag: str) -> str:
+    if flag == "generic_reduced":
+        return "эффективное сечение получено через generic_reduced."
+    if flag.startswith("forecast_source:") and flag.endswith(":baseline"):
+        _, zone_id, _ = flag.split(":", 2)
+        return f"зона {zone_id}: прогноз продолжен по baseline-модели."
+    if flag.startswith("resistance_mode:"):
+        return f"режим сопротивления {translate_resistance_mode(flag.split(':', 1)[1])}."
+    return flag
+
+
+def unique_lines(lines: Sequence[str]) -> List[str]:
+    seen = set()
+    unique: List[str] = []
+    for line in lines:
+        if line in seen:
+            continue
+        seen.add(line)
+        unique.append(line)
+    return unique

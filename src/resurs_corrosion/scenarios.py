@@ -23,32 +23,32 @@ def default_scenario_library(category: EnvironmentCategory) -> List[CalculationS
     return [
         CalculationScenarioInput(
             code="baseline",
-            name="Baseline",
-            notes="Primary deterministic baseline forecast.",
+            name="Базовый",
+            notes="Основной детерминированный базовый прогноз.",
         ),
         CalculationScenarioInput(
             code="conservative",
-            name="Conservative",
+            name="Консервативный",
             b_override=env["b_conservative"],
-            notes="Higher time exponent for a more cautious long-term degradation trend.",
+            notes="Повышенный временной показатель для более осторожного долгосрочного тренда деградации.",
         ),
         CalculationScenarioInput(
             code="after_repair",
-            name="After protective coating repair",
+            name="После ремонта защитного покрытия",
             repair_factor=0.35,
             repair_after_years=0.0,
-            notes="Assumes protective coating renewal at the current assessment date.",
+            notes="Предполагается восстановление защитного покрытия на текущую дату оценки.",
         ),
         CalculationScenarioInput(
             code="aggressive_environment",
-            name="Aggressive environment escalation",
+            name="Усиление агрессивности среды",
             corrosion_k_factor=1.25,
-            notes="Simulates a deterioration of atmospheric aggressiveness.",
+            notes="Имитирует рост атмосферной агрессивности среды.",
         ),
         CalculationScenarioInput(
             code="increased_load",
-            name="Increased design action",
+            name="Повышение расчетной нагрузки",
             demand_factor=1.15,
-            notes="Simulates a rise in operational demand.",
+            notes="Имитирует увеличение эксплуатационного воздействия.",
         ),
     ]

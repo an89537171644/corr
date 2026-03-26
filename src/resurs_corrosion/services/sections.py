@@ -1,9 +1,27 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, Iterable, List
+from dataclasses import dataclass, field
+from typing import Dict, Iterable, List, Sequence
 
-from ..domain import SectionDefinition, SectionProperties, SectionType, ZoneDefinition, ZoneState
+from ..domain import (
+    EngineeringConfidenceLevel,
+    ReducerMode,
+    SectionDefinition,
+    SectionProperties,
+    SectionType,
+    ZoneDefinition,
+    ZoneState,
+)
+
+
+@dataclass
+class SectionAssessment:
+    properties: SectionProperties
+    reducer_mode: ReducerMode
+    engineering_confidence_level: EngineeringConfidenceLevel
+    warnings: List[str] = field(default_factory=list)
+    fallback_flags: List[str] = field(default_factory=list)
 
 
 def _build_initial_thickness_map(zones: Iterable[ZoneDefinition]) -> Dict[str, List[float]]:
@@ -20,15 +38,15 @@ def _build_effective_thickness_map(zone_states: Iterable[ZoneState]) -> Dict[str
     return mapping
 
 
-def _pick_min(mapping: Dict[str, List[float]], roles: List[str], fallback: float) -> float:
+def _pick_min_with_source(mapping: Dict[str, List[float]], roles: List[str], fallback: float, label: str) -> tuple[float, bool, str]:
     values: List[float] = []
     for role in roles:
         values.extend(mapping.get(role, []))
 
     if values:
-        return min(values)
+        return min(values), False, label
 
-    return fallback
+    return fallback, True, label
 
 
 def _build_i_like_section(height: float, flange_width: float, top_flange: float, bottom_flange: float, web: float) -> SectionProperties:
@@ -68,20 +86,43 @@ def build_effective_section(
     zones: List[ZoneDefinition],
     zone_states: List[ZoneState],
 ) -> SectionProperties:
+    return evaluate_effective_section(section, zones, zone_states).properties
+
+
+def evaluate_effective_section(
+    section: SectionDefinition,
+    zones: Sequence[ZoneDefinition],
+    zone_states: Sequence[ZoneState],
+) -> SectionAssessment:
     effective_map = _build_effective_thickness_map(zone_states)
     initial_map = _build_initial_thickness_map(zones)
+    warnings: List[str] = []
+    fallback_flags: List[str] = []
+    reducer_mode = ReducerMode.DIRECT
+    confidence = EngineeringConfidenceLevel.A
 
     if section.section_type == SectionType.PLATE:
-        thickness = _pick_min(
+        thickness, used_fallback, label = _pick_min_with_source(
             mapping=effective_map,
             roles=["plate"],
             fallback=min(state.effective_thickness_mm for state in zone_states),
+            label="plate",
         )
+        if used_fallback:
+            warnings.append(f"Для reducer '{label}' использована fallback-толщина вместо роли зоны 'plate'.")
+            confidence = EngineeringConfidenceLevel.B
+
         width = float(section.width_mm)
         area = width * thickness
         inertia = (width * (thickness**3)) / 12.0
         modulus = inertia / max(thickness / 2.0, 1e-9)
-        return SectionProperties(area_mm2=area, inertia_mm4=inertia, section_modulus_mm3=modulus)
+        return finalize_section_assessment(
+            SectionProperties(area_mm2=area, inertia_mm4=inertia, section_modulus_mm3=modulus),
+            reducer_mode,
+            confidence,
+            warnings,
+            fallback_flags,
+        )
 
     if section.section_type in (SectionType.I_SECTION, SectionType.CHANNEL):
         height = float(section.height_mm)
@@ -89,20 +130,34 @@ def build_effective_section(
         default_flange = float(section.flange_thickness_mm)
         default_web = float(section.web_thickness_mm)
 
-        top_flange = _pick_min(effective_map, ["top_flange", "flange"], default_flange)
-        bottom_flange = _pick_min(effective_map, ["bottom_flange", "flange"], default_flange)
-        web = _pick_min(effective_map, ["web"], default_web)
-        return _build_i_like_section(height, flange_width, top_flange, bottom_flange, web)
+        top_flange, top_fallback, _ = _pick_min_with_source(effective_map, ["top_flange", "flange"], default_flange, "top_flange")
+        bottom_flange, bottom_fallback, _ = _pick_min_with_source(effective_map, ["bottom_flange", "flange"], default_flange, "bottom_flange")
+        web, web_fallback, _ = _pick_min_with_source(effective_map, ["web"], default_web, "web")
+        if top_fallback or bottom_fallback or web_fallback:
+            warnings.append("Для I/channel reducer часть зон не сопоставлена напрямую; использованы номинальные толщины профиля.")
+            confidence = EngineeringConfidenceLevel.B
+
+        return finalize_section_assessment(
+            _build_i_like_section(height, flange_width, top_flange, bottom_flange, web),
+            reducer_mode,
+            confidence,
+            warnings,
+            fallback_flags,
+        )
 
     if section.section_type == SectionType.ANGLE:
         leg_horizontal = float(section.leg_horizontal_mm)
         leg_vertical = float(section.leg_vertical_mm)
         default_thickness = float(section.leg_thickness_mm)
-        thickness = _pick_min(
+        thickness, used_fallback, _ = _pick_min_with_source(
             effective_map,
             ["angle_leg", "angle_leg_horizontal", "angle_leg_vertical", "leg", "flange", "web"],
             default_thickness,
+            "angle_leg",
         )
+        if used_fallback:
+            warnings.append("Для angle reducer использована fallback-толщина, так как специализированные роли зон отсутствуют.")
+            confidence = EngineeringConfidenceLevel.B
 
         area_horizontal = leg_horizontal * thickness
         area_vertical = thickness * leg_vertical
@@ -110,7 +165,13 @@ def build_effective_section(
         total_area = area_horizontal + area_vertical - overlap_area
 
         if total_area <= 0:
-            return SectionProperties(area_mm2=0.0, inertia_mm4=0.0, section_modulus_mm3=0.0)
+            return finalize_section_assessment(
+                SectionProperties(area_mm2=0.0, inertia_mm4=0.0, section_modulus_mm3=0.0),
+                reducer_mode,
+                EngineeringConfidenceLevel.D,
+                warnings,
+                fallback_flags,
+            )
 
         x_bar = (
             (area_horizontal * (leg_horizontal / 2.0))
@@ -141,22 +202,42 @@ def build_effective_section(
             inertia = inertia_y
             distance = max(x_bar, leg_horizontal - x_bar, 1e-9)
 
-        return SectionProperties(
-            area_mm2=total_area,
-            inertia_mm4=inertia,
-            section_modulus_mm3=inertia / distance,
+        return finalize_section_assessment(
+            SectionProperties(
+                area_mm2=total_area,
+                inertia_mm4=inertia,
+                section_modulus_mm3=inertia / distance,
+            ),
+            reducer_mode,
+            confidence,
+            warnings,
+            fallback_flags,
         )
 
     if section.section_type == SectionType.TUBE:
         outer_diameter = float(section.outer_diameter_mm)
         default_wall = float(section.wall_thickness_mm)
-        wall = _pick_min(effective_map, ["tube_wall", "wall", "shell"], default_wall)
+        wall, used_fallback, _ = _pick_min_with_source(effective_map, ["tube_wall", "wall", "shell"], default_wall, "tube_wall")
+        if used_fallback:
+            warnings.append("Для tube reducer использована fallback-толщина стенки, так как роли зон не заданы явно.")
+            confidence = EngineeringConfidenceLevel.B
+
         inner_diameter = max(outer_diameter - (2.0 * wall), 0.0)
         area = (3.141592653589793 / 4.0) * ((outer_diameter**2) - (inner_diameter**2))
         inertia = (3.141592653589793 / 64.0) * ((outer_diameter**4) - (inner_diameter**4))
         modulus = inertia / max(outer_diameter / 2.0, 1e-9)
-        return SectionProperties(area_mm2=area, inertia_mm4=inertia, section_modulus_mm3=modulus)
+        return finalize_section_assessment(
+            SectionProperties(area_mm2=area, inertia_mm4=inertia, section_modulus_mm3=modulus),
+            reducer_mode,
+            confidence,
+            warnings,
+            fallback_flags,
+        )
 
+    reducer_mode = ReducerMode.GENERIC_FALLBACK
+    confidence = EngineeringConfidenceLevel.C
+    warnings.append("Использован generic_reduced fallback; результат применим только как укрупненная инженерная оценка.")
+    fallback_flags.append("generic_reduced")
     reference = float(section.reference_thickness_mm)
     thickness_ratios: List[float] = []
     for state in zone_states:
@@ -166,8 +247,36 @@ def build_effective_section(
     reduction = min(thickness_ratios) if thickness_ratios else 1.0
     reduction = max(0.0, min(1.0, reduction))
 
-    return SectionProperties(
-        area_mm2=float(section.area0_mm2) * reduction,
-        inertia_mm4=float(section.inertia0_mm4) * (reduction**3),
-        section_modulus_mm3=float(section.section_modulus0_mm3) * (reduction**2),
+    return finalize_section_assessment(
+        SectionProperties(
+            area_mm2=float(section.area0_mm2) * reduction,
+            inertia_mm4=float(section.inertia0_mm4) * (reduction**3),
+            section_modulus_mm3=float(section.section_modulus0_mm3) * (reduction**2),
+        ),
+        reducer_mode,
+        confidence,
+        warnings,
+        fallback_flags,
+    )
+
+
+def finalize_section_assessment(
+    properties: SectionProperties,
+    reducer_mode: ReducerMode,
+    confidence: EngineeringConfidenceLevel,
+    warnings: List[str],
+    fallback_flags: List[str],
+) -> SectionAssessment:
+    final_confidence = confidence
+    final_warnings = list(warnings)
+    if properties.area_mm2 <= 0 or properties.section_modulus_mm3 <= 0:
+        final_confidence = EngineeringConfidenceLevel.D
+        final_warnings.append("Эффективное сечение выродилось; результат следует считать исследовательским.")
+
+    return SectionAssessment(
+        properties=properties,
+        reducer_mode=reducer_mode,
+        engineering_confidence_level=final_confidence,
+        warnings=final_warnings,
+        fallback_flags=list(fallback_flags),
     )

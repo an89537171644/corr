@@ -19,11 +19,19 @@ quality-based weighting.
 
 ## 2. Observed degradation rate
 
-- One inspection:
+The observed rate is now estimated by `infer_degradation_rate(...)` with staged modes:
+
+- `single_observation`
   `v_z = delta_obs / T_exp`
-- Two or more inspections:
-  the current implementation uses the last two valid zone observations:
-  `v_z = max(0, (delta_2 - delta_1) / (t_2 - t_1))`
+- `two_point`
+  backward-compatible two-point slope between the last valid observations
+- `robust_history_fit`
+  main mode for 3+ observations with:
+  - weighted `(time, delta)` fit
+  - quality weights
+  - outlier suppression
+  - returned interval `v_lower, v_upper`
+  - metadata `fit_mode`, `rate_confidence`, `used_points_count`
 
 ## 3. Baseline model
 
@@ -47,10 +55,16 @@ When inspection data exists, future degradation is forecast from the last observ
 
 Where:
 
-`v_fut = v_obs * exp(h_ens(x_z))`
+`v_fut = v_obs * f_ens(x_z)`
 
-In the current MVP, `h_ens` is a deterministic, documented heuristic ensemble with
-the same `fit/predict/predict_interval/save/load` interface that future trained models will use.
+The current implementation keeps the same public interface
+`fit/predict/predict_interval/save/load`, but evolves the internal logic into a
+staged ensemble framework:
+
+- heuristic legacy anchor
+- optional tabular candidate models
+- deterministic fallback when external ML packages are not available
+- traceable `execution_mode`, dataset journal, and accepted row count
 
 ## 5. Physical constraints
 
@@ -73,14 +87,21 @@ Implemented section reducers:
 
 ## 7. Resistance and remaining life
 
-Residual resistance is approximated at engineering-MVP level:
+Residual resistance is approximated at engineering-MVP/stage-2 level:
 
 - axial tension/compression through effective area
 - major-axis bending through effective section modulus
+- basic combined axial force and bending interaction check `N/Nrd + M/Mrd <= 1.0`
 
-Remaining life is found on a discrete time grid as the first crossing of:
+Remaining life is found from:
 
 `g(t) = R(t) - S(t)`
+
+The current search is no longer grid-only. It uses:
+
+- coarse scan on the reporting timeline
+- local sign-change bracket
+- linear/monotone refinement inside the bracket
 
 ## 8. Forecast modes
 
@@ -94,3 +115,15 @@ Supported run modes:
   observed rate multiplied by the explicit ensemble correction
 
 If no inspections exist, `observed` and `hybrid` automatically fall back to baseline.
+
+## 9. Engineering transparency
+
+The analysis payload, UI, and reports now expose:
+
+- `engineering_confidence_level` (`A/B/C/D`)
+- `resistance_mode`
+- `reducer_mode`
+- `rate_fit_mode`
+- `ml_mode`
+- `warnings[]`
+- `fallback_flags[]`
